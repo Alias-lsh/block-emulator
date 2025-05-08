@@ -104,11 +104,13 @@ func (cs *CLPAState) ComputeEdges2Shard() {
 	interEdge := make([]int, cs.ShardNum)
 	cs.MinEdges2Shard = math.MaxInt
 
+	// 初始化
 	for idx := 0; idx < cs.ShardNum; idx++ {
 		cs.Edges2Shard[idx] = 0
 		interEdge[idx] = 0
 	}
 
+	// 遍历网络图中所有边
 	for v, lst := range cs.NetGraph.EdgeSet {
 		// 获取节点 v 所属的shard
 		vShard := cs.PartitionMap[v]
@@ -125,16 +127,19 @@ func (cs *CLPAState) ComputeEdges2Shard() {
 		}
 	}
 
+	// 计算全局跨分片边总数
 	cs.CrossShardEdgeNum = 0
 	for _, val := range cs.Edges2Shard {
 		cs.CrossShardEdgeNum += val
 	}
+	// 同一条边会被统计两次，所以需要除以2
 	cs.CrossShardEdgeNum /= 2
 
+	// 合并内部边
 	for idx := 0; idx < cs.ShardNum; idx++ {
 		cs.Edges2Shard[idx] += interEdge[idx] / 2
 	}
-	// 修改 MinEdges2Shard, CrossShardEdgeNum
+	// 修改 MinEdges2Shard, CrossShardEdgeNum，寻找最小边数分片
 	for _, val := range cs.Edges2Shard {
 		if cs.MinEdges2Shard > val {
 			cs.MinEdges2Shard = val
@@ -145,21 +150,25 @@ func (cs *CLPAState) ComputeEdges2Shard() {
 // 在账户所属分片变动时，重新计算各个参数，faster
 func (cs *CLPAState) changeShardRecompute(v Vertex, old int) {
 	new := cs.PartitionMap[v]
+	// 遍历节点v的所有邻居
 	for _, u := range cs.NetGraph.EdgeSet[v] {
 		neighborShard := cs.PartitionMap[u]
 		if neighborShard != new && neighborShard != old {
+			// 新分片接收跨分片边+1，旧分片释放跨分片边-1
 			cs.Edges2Shard[new]++
 			cs.Edges2Shard[old]--
 		} else if neighborShard == new {
+			// 旧分片释放跨分片边-1，全局跨分片边-1
 			cs.Edges2Shard[old]--
 			cs.CrossShardEdgeNum--
 		} else {
+			// 新分片接收跨分片边+1,全局跨分片边+1
 			cs.Edges2Shard[new]++
 			cs.CrossShardEdgeNum++
 		}
 	}
 	cs.MinEdges2Shard = math.MaxInt
-	// 修改 MinEdges2Shard, CrossShardEdgeNum
+	// 修改 MinEdges2Shard, CrossShardEdgeNum，寻找最小边数分片
 	for _, val := range cs.Edges2Shard {
 		if cs.MinEdges2Shard > val {
 			cs.MinEdges2Shard = val

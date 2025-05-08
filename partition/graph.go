@@ -1,12 +1,6 @@
 // 图的相关操作
 package partition
 
-// 图中的结点，即区块链网络中参与交易的账户
-type Vertex struct {
-	Addr string // 账户地址
-	// 其他属性待补充
-}
-
 // 描述当前区块链交易集合的图
 type Graph struct {
 	VertexSet map[Vertex]bool     // 节点集合，其实是 set

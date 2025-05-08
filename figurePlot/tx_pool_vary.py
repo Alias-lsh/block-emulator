@@ -1,9 +1,11 @@
 import os
 import pandas as pd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+mpl.use('TkAgg')
 # 定义存储CSV文件的目录
-directory = './expTest/result/pbft_shardNum=4'
+directory = 'E:\\block-emulator\\expTest\\result\\pbft_shardNum=4'
 
 # 获取目录中所有的CSV文件
 csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]

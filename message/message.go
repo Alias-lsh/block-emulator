@@ -18,6 +18,7 @@ const (
 	CRequestOldrequest MessageType = "requestOldrequest"
 	CSendOldrequest    MessageType = "sendOldrequest"
 	CStop              MessageType = "stop"
+	// CrossShardTransaction MessageType = "crossShardTransaction"
 
 	CRelay          MessageType = "relay"
 	CRelayWithProof MessageType = "CRelay&Proof"
@@ -60,6 +61,13 @@ type Commit struct {
 	SeqID      uint64
 	SenderNode *shard.Node // To identify who send this message
 }
+
+// type Transaction struct {
+// 	Sender    string `json:"sender"`
+// 	Recipient string `json:"recipient"`
+// 	Amount    int    `json:"amount"`
+// 	Timestamp int64  `json:"timestamp"`
+// }
 
 type Reply struct {
 	MessageID  uint64

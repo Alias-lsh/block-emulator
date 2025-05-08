@@ -1,9 +1,11 @@
 import pandas as pd
 import seaborn as sns
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+mpl.use('TkAgg')
 # 读取CSV文件
-file_path = './expTest/result/supervisor_measureOutput/Tx_Details.csv'  # 替换为你的CSV文件路径
+file_path = 'E:\\block-emulator\\expTest\\result\\supervisor_measureOutput\\Tx_Details.csv'  # 替换为你的CSV文件路径
 df = pd.read_csv(file_path)
 
 # 提取 "Confirmed latency of this tx (ms)" 列

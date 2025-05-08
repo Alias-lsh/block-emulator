@@ -9,6 +9,7 @@ import (
 	"blockEmulator/message"
 	"blockEmulator/networks"
 	"blockEmulator/params"
+	"blockEmulator/partition"
 	"blockEmulator/shard"
 	"bufio"
 	"io"
@@ -22,6 +23,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
+
+const TimeWindow int64 = 1200
 
 type PbftConsensusNode struct {
 	// the local config about pbft
@@ -81,6 +84,10 @@ type PbftConsensusNode struct {
 
 	// to handle the message outside of pbft
 	ohm OpInterShards
+
+	// 用于存储跨分片交易的时间信息
+	// TransactionTimes map[string][]int64 // key: "sender->recipient", value: list of transaction timestamps
+	NetGraph *partition.RGraph // 图结构，用于存储节点和边
 }
 
 // generate a pbft consensus for a node
@@ -91,6 +98,13 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 	p.ShardID = shardID
 	p.NodeID = nodeID
 	p.pbftChainConfig = pcc
+	// p.TransactionTimes = make(map[string][]int64)
+	// 初始化 NetGraph
+	p.NetGraph = &partition.RGraph{
+		VertexSet: make(map[partition.Vertex]bool),
+		EdgeSet:   make(map[partition.Vertex]map[partition.Vertex]float64),
+		EdgeTimes: make(map[partition.Vertex]map[partition.Vertex][]int64),
+	}
 	fp := params.DatabaseWrite_path + "mptDB/ldb/s" + strconv.FormatUint(shardID, 10) + "/n" + strconv.FormatUint(nodeID, 10)
 	var err error
 	p.db, err = rawdb.NewLevelDBDatabase(fp, 0, 1, "accountState", false)
@@ -151,6 +165,16 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 			pbftNode: p,
 			cdm:      ncdm,
 		}
+	case "RLPA":
+		ncdm := dataSupport.NewRLPADataSupport()
+		p.ihm = &RLPAPbftInsideExtraHandleMod{
+			pbftNode: p,
+			cdm:      ncdm,
+		}
+		p.ohm = &RLPARelayOutsideModule{
+			pbftNode: p,
+			cdm:      ncdm,
+		}
 	case "Broker":
 		p.ihm = &RawBrokerPbftExtraHandleMod{
 			pbftNode: p,
@@ -188,7 +212,8 @@ func (p *PbftConsensusNode) handleMessage(msg []byte) {
 	case message.CCommit:
 		// use "go" to start a go routine to handle this message, so that a pre-arrival message will not be aborted.
 		go p.handleCommit(content)
-
+	// case message.CrossShardTransaction:
+	// 	go p.handleCrossShardTransaction(content)
 	case message.ViewChangePropose:
 		p.handleViewChangeMsg(content)
 	case message.NewChange:
@@ -246,6 +271,40 @@ func (p *PbftConsensusNode) TcpListen() {
 		go p.handleClientRequest(conn)
 	}
 }
+
+// // 处理跨分片交易
+// func (p *PbftConsensusNode) handleCrossShardTransaction(content []byte) {
+// 	tx := new(message.Transaction)
+// 	err := json.Unmarshal(content, tx)
+// 	if err != nil {
+// 		log.Panic(err)
+// 	}
+
+// 	// 获取当前时间
+// 	t_now := time.Now().Unix()
+
+// 	// // 更新账户交易频率
+// 	// p.ohm.(*RLPARelayOutsideModule).cdm.UpdateAccountFrequency(tx.Sender, tx.Recipient)
+
+// 	// 记录交易时间
+// 	key := tx.Sender + "->" + tx.Recipient
+// 	p.TransactionTimes[key] = append(p.TransactionTimes[key], t_now)
+
+// 	// 如果交易涉及热点账户，则更新图
+// 	if p.ohm.(*RLPARelayOutsideModule).cdm.IsHotAccount(tx.Sender) || p.ohm.(*RLPARelayOutsideModule).cdm.IsHotAccount(tx.Recipient) {
+// 		sender := partition.Vertex{Addr: tx.Sender}
+// 		recipient := partition.Vertex{Addr: tx.Recipient}
+// 		// p.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
+// 		p.ohm.(*RLPARelayOutsideModule).pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
+// 	}
+
+// 	// // 更新关联度
+// 	// sender := partition.Vertex{Addr: tx.Sender}
+// 	// recipient := partition.Vertex{Addr: tx.Recipient}
+// 	// p.ohm.(*RLPARelayOutsideModule).pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
+
+// 	p.pl.Plog.Printf("Handled cross-shard transaction: %s -> %s\n", tx.Sender, tx.Recipient)
+// }
 
 // When receiving a stop message, this node try to stop.
 func (p *PbftConsensusNode) WaitToStop() {

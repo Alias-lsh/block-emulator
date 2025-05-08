@@ -23,6 +23,10 @@ type AccountTransferMsg struct {
 	Addrs        []string
 	AccountState []*core.AccountState
 	ATid         uint64
+	Sender       string `json:"sender"`    // 发送方地址
+	Recipient    string `json:"recipient"` // 接收方地址
+	Amount       int    `json:"amount"`    // 转账金额
+	Timestamp    int64  `json:"timestamp"` // 转账时间
 }
 
 type PartitionReady struct {
