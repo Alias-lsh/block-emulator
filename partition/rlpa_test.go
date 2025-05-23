@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const TimeWindow int64 = 60
+// const TimeWindow float64 = 60
 
 func TestRlpa(t *testing.T) {
 	// 初始化 RLPAState
@@ -61,18 +61,18 @@ func TestRlpa(t *testing.T) {
 				}
 				t_now := time.Now().Unix()
 				// k.AddEdge(s, r, 1) // 默认边权重为 1
-				k.AddEdgeWithTime(s, r, t_now, TimeWindow)
+				k.AddEdgeWithTime2(s, r, float64(t_now))
 			}
 			datanum++
 		}
 	}
-	// 打印热点账户信息
-	log.Println("Hot Accounts:")
-	for account, freq := range accountFrequency {
-		if freq > hotAccountThreshold {
-			log.Printf("Account: %s, Frequency: %d\n", account, freq)
-		}
-	}
+	// // 打印热点账户信息
+	// log.Println("Hot Accounts:")
+	// for account, freq := range accountFrequency {
+	// 	if freq > hotAccountThreshold {
+	// 		log.Printf("Account: %s, Frequency: %d\n", account, freq)
+	// 	}
+	// }
 
 	// 执行 RLPA 分片算法
 	k.RLPA_Partition()

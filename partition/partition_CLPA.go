@@ -24,6 +24,9 @@ type CLPAState struct {
 	CrossShardEdgeNum int            // 跨分片边的总数
 	ShardNum          int            // 分片数目
 	GraphHash         []byte
+
+	// AccountFrequency map[string]int // 存储账户的交易频率
+	// HotAccountLock   sync.Mutex     // 锁，用于保护热点账户的更新
 }
 
 func (graph *CLPAState) Hash() []byte {
@@ -70,6 +73,7 @@ func (cs *CLPAState) AddEdge(u, v Vertex) {
 }
 
 // 复制CLPA状态
+
 func (dst *CLPAState) CopyCLPA(src CLPAState) {
 	dst.NetGraph.CopyGraph(src.NetGraph)
 	dst.PartitionMap = make(map[Vertex]int)
@@ -85,6 +89,22 @@ func (dst *CLPAState) CopyCLPA(src CLPAState) {
 	dst.ShardNum = src.ShardNum
 }
 
+// // 复制CLPA状态
+// func (dst *CLPAState) CopyCLPA(src *CLPAState) {
+// 	dst.NetGraph.CopyGraph(src.NetGraph)
+// 	dst.PartitionMap = make(map[Vertex]int)
+// 	for v := range src.PartitionMap {
+// 		dst.PartitionMap[v] = src.PartitionMap[v]
+// 	}
+// 	dst.Edges2Shard = make([]int, src.ShardNum)
+// 	copy(dst.Edges2Shard, src.Edges2Shard)
+// 	dst.VertexsNumInShard = src.VertexsNumInShard
+// 	dst.WeightPenalty = src.WeightPenalty
+// 	dst.MinEdges2Shard = src.MinEdges2Shard
+// 	dst.MaxIterations = src.MaxIterations
+// 	dst.ShardNum = src.ShardNum
+// }
+
 // 输出CLPA
 func (cs *CLPAState) PrintCLPA() {
 	cs.NetGraph.PrintGraph()
@@ -97,6 +117,34 @@ func (cs *CLPAState) PrintCLPA() {
 	}
 	println()
 }
+
+// // 更新账户交易频率
+// func (cs *CLPAState) UpdateAccountFrequency(sender, recipient string) {
+// 	cs.HotAccountLock.Lock()
+// 	defer cs.HotAccountLock.Unlock()
+
+// 	cs.AccountFrequency[sender]++
+// 	cs.AccountFrequency[recipient]++
+
+// 	// // 判断是否为热点账户
+// 	// if cs.AccountFrequency[sender] > 1000 {
+// 	// 	cs.HotAccounts[sender] = true
+// 	// }
+// 	// if cs.AccountFrequency[recipient] > 1000 {
+// 	// 	cs.HotAccounts[recipient] = true
+// 	// }
+// }
+
+// // 判断是否为热点账户
+// func (cs *CLPAState) IsHotAccount(account string) bool {
+// 	cs.HotAccountLock.Lock()
+// 	defer cs.HotAccountLock.Unlock()
+// 	flag := false
+// 	if cs.AccountFrequency[account] > 1000 {
+// 		flag = true
+// 	}
+// 	return flag
+// }
 
 // 根据当前划分，计算 Wk，即 Edges2Shard
 func (cs *CLPAState) ComputeEdges2Shard() {
@@ -183,6 +231,8 @@ func (cs *CLPAState) Init_CLPAState(wp float64, mIter, sn int) {
 	cs.ShardNum = sn
 	cs.VertexsNumInShard = make([]int, cs.ShardNum)
 	cs.PartitionMap = make(map[Vertex]int)
+
+	// cs.AccountFrequency = make(map[string]int)
 }
 
 // 初始化划分，使用节点地址的尾数划分，应该保证初始化的时候不会出现空分片

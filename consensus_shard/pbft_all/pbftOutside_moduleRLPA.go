@@ -44,24 +44,6 @@ func (crom *RLPARelayOutsideModule) handleRelay(content []byte) {
 		log.Panic(err)
 	}
 
-	// // 更新关联度
-	// for _, tx := range relay.Txs {
-	// 	// // 更新账户交易频率
-	// 	// crom.cdm.UpdateAccountFrequency(tx.Sender, tx.Recipient)
-	// 	// 如果交易涉及热点账户，则更新图
-	// 	if crom.cdm.IsHotAccount(tx.Sender) || crom.cdm.IsHotAccount(tx.Recipient) {
-	// 		// 获取当前时间
-	// 		t_now := time.Now().Unix()
-	// 		sender := partition.Vertex{Addr: tx.Sender}
-	// 		recipient := partition.Vertex{Addr: tx.Recipient}
-	// 		crom.pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
-	// 	}
-
-	// 	// sender := partition.Vertex{Addr: tx.Sender}
-	// 	// recipient := partition.Vertex{Addr: tx.Recipient}
-	// 	// crom.pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
-	// }
-
 	crom.pbftNode.pl.Plog.Printf("S%dN%d : has received relay txs from shard %d, the senderSeq is %d\n", crom.pbftNode.ShardID, crom.pbftNode.NodeID, relay.SenderShardID, relay.SenderSeq)
 	crom.pbftNode.CurChain.Txpool.AddTxs2Pool(relay.Txs)
 	crom.pbftNode.seqMapLock.Lock()

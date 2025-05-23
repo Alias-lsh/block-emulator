@@ -24,7 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-const TimeWindow int64 = 1200
+// const TimeWindow int64 = 60
 
 type PbftConsensusNode struct {
 	// the local config about pbft
@@ -103,7 +103,7 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 	p.NetGraph = &partition.RGraph{
 		VertexSet: make(map[partition.Vertex]bool),
 		EdgeSet:   make(map[partition.Vertex]map[partition.Vertex]float64),
-		EdgeTimes: make(map[partition.Vertex]map[partition.Vertex][]int64),
+		EdgeTimes: make(map[partition.Vertex]map[partition.Vertex][]float64),
 	}
 	fp := params.DatabaseWrite_path + "mptDB/ldb/s" + strconv.FormatUint(shardID, 10) + "/n" + strconv.FormatUint(nodeID, 10)
 	var err error
@@ -271,40 +271,6 @@ func (p *PbftConsensusNode) TcpListen() {
 		go p.handleClientRequest(conn)
 	}
 }
-
-// // 处理跨分片交易
-// func (p *PbftConsensusNode) handleCrossShardTransaction(content []byte) {
-// 	tx := new(message.Transaction)
-// 	err := json.Unmarshal(content, tx)
-// 	if err != nil {
-// 		log.Panic(err)
-// 	}
-
-// 	// 获取当前时间
-// 	t_now := time.Now().Unix()
-
-// 	// // 更新账户交易频率
-// 	// p.ohm.(*RLPARelayOutsideModule).cdm.UpdateAccountFrequency(tx.Sender, tx.Recipient)
-
-// 	// 记录交易时间
-// 	key := tx.Sender + "->" + tx.Recipient
-// 	p.TransactionTimes[key] = append(p.TransactionTimes[key], t_now)
-
-// 	// 如果交易涉及热点账户，则更新图
-// 	if p.ohm.(*RLPARelayOutsideModule).cdm.IsHotAccount(tx.Sender) || p.ohm.(*RLPARelayOutsideModule).cdm.IsHotAccount(tx.Recipient) {
-// 		sender := partition.Vertex{Addr: tx.Sender}
-// 		recipient := partition.Vertex{Addr: tx.Recipient}
-// 		// p.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
-// 		p.ohm.(*RLPARelayOutsideModule).pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
-// 	}
-
-// 	// // 更新关联度
-// 	// sender := partition.Vertex{Addr: tx.Sender}
-// 	// recipient := partition.Vertex{Addr: tx.Recipient}
-// 	// p.ohm.(*RLPARelayOutsideModule).pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
-
-// 	p.pl.Plog.Printf("Handled cross-shard transaction: %s -> %s\n", tx.Sender, tx.Recipient)
-// }
 
 // When receiving a stop message, this node try to stop.
 func (p *PbftConsensusNode) WaitToStop() {

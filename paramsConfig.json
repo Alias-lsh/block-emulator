@@ -1,14 +1,14 @@
 {
-  "ConsensusMethod": 4,
+  "ConsensusMethod": 1,
   
   "PbftViewChangeTimeOut":200000,
 
-  "ExpDataRootDir": "expTestRLPACLPA",
+  "ExpDataRootDir": "TestCLPARunDuration3",
 
   "Block_Interval": 5000,
 
-  "BlockSize": 2000,
-  "BlocksizeInBytes": 200000,
+  "BlockSize": 5000,
+  "BlocksizeInBytes": 500000,
   "UseBlocksizeInBytes": 0,
 
   "InjectSpeed": 2000,

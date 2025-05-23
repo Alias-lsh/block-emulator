@@ -26,9 +26,9 @@ type RLPAState struct {
 	ShardNum          int            // 分片数目
 	GraphHash         []byte
 
-	HotAccounts      map[string]bool // 存储热点账户
-	AccountFrequency map[string]int  // 存储账户的交易频率
-	HotAccountLock   sync.Mutex      // 锁，用于保护热点账户的更新
+	// HotAccounts      map[string]bool // 存储热点账户
+	AccountFrequency map[string]int // 存储账户的交易频率
+	HotAccountLock   sync.Mutex     // 锁，用于保护热点账户的更新
 }
 
 func (graph *RLPAState) Hash() []byte {
@@ -48,7 +48,7 @@ func (graph *RLPAState) Encode() []byte {
 	return buff.Bytes()
 }
 
-func (cs *RLPAState) AddEdgeWithTime(u, v Vertex, t_now int64, T int64) {
+func (cs *RLPAState) AddEdgeWithTime(u, v Vertex, t_now float64, T float64) {
 	if _, ok := cs.NetGraph.VertexSet[u]; !ok {
 		cs.AddVertex(u)
 	}
@@ -56,6 +56,16 @@ func (cs *RLPAState) AddEdgeWithTime(u, v Vertex, t_now int64, T int64) {
 		cs.AddVertex(v)
 	}
 	cs.NetGraph.AddEdgeWithTime(u, v, t_now, T)
+}
+
+func (cs *RLPAState) AddEdgeWithTime2(u, v Vertex, t_now float64) {
+	if _, ok := cs.NetGraph.VertexSet[u]; !ok {
+		cs.AddVertex(u)
+	}
+	if _, ok := cs.NetGraph.VertexSet[v]; !ok {
+		cs.AddVertex(v)
+	}
+	cs.NetGraph.AddEdgeWithTime2(u, v, t_now)
 }
 
 // 加入节点，需要将它默认归到一个分片中
@@ -95,7 +105,7 @@ func (dst *RLPAState) CopyRLPA(src *RLPAState) {
 	dst.MaxIterations = src.MaxIterations
 	dst.ShardNum = src.ShardNum
 	// 复制热点账户信息
-	dst.HotAccounts = src.HotAccounts
+	// dst.HotAccounts = src.HotAccounts
 	dst.AccountFrequency = src.AccountFrequency
 
 }
@@ -193,7 +203,7 @@ func (cs *RLPAState) Init_RLPAState(wp float64, mIter, sn int) {
 	cs.VertexsNumInShard = make([]int, cs.ShardNum)
 	cs.PartitionMap = make(map[Vertex]int)
 
-	cs.HotAccounts = make(map[string]bool)
+	// cs.HotAccounts = make(map[string]bool)
 	cs.AccountFrequency = make(map[string]int)
 
 	// cs.Edges2Shard = make([]int, sn)
@@ -208,22 +218,17 @@ func (cs *RLPAState) UpdateAccountFrequency(sender, recipient string) {
 
 	cs.AccountFrequency[sender]++
 	cs.AccountFrequency[recipient]++
-
-	// 判断是否为热点账户
-	if cs.AccountFrequency[sender] > 1000 {
-		cs.HotAccounts[sender] = true
-	}
-	if cs.AccountFrequency[recipient] > 1000 {
-		cs.HotAccounts[recipient] = true
-	}
 }
 
 // 判断是否为热点账户
 func (cs *RLPAState) IsHotAccount(account string) bool {
 	cs.HotAccountLock.Lock()
 	defer cs.HotAccountLock.Unlock()
-
-	return cs.HotAccounts[account]
+	flag := false
+	if cs.AccountFrequency[account] > 1000 {
+		flag = true
+	}
+	return flag
 }
 
 // 初始化划分
@@ -262,13 +267,122 @@ func (cs *RLPAState) Stable_Init_Partition() error {
 
 // 计算 将节点 v 放入 uShard 所产生的 score
 func (cs *RLPAState) getShard_score(v Vertex, uShard int) float64 {
-	score := 0.0
+	var score float64
+	var totalWeight float64 = 0.0
+	var shardWeight float64 = 0.0
 	for neighbor, weight := range cs.NetGraph.EdgeSet[v] {
+		totalWeight += float64(weight)
 		if cs.PartitionMap[neighbor] == uShard {
-			score += float64(weight)
+			shardWeight += float64(weight)
 		}
 	}
+	// t0 := cs.GetEarliestTransactionTime()
+	// stability := cs.CalculateTransactionVolumeStability(t0, 1200.0)
+	// score = 0.5*float64(shardWeight)/float64(totalWeight)*(1-cs.WeightPenalty*float64(cs.Edges2Shard[uShard])/float64(cs.MinEdges2Shard)) + 0.5*stability
+	// cs.PrintAllEdgeTimes()
+	score = float64(shardWeight) / float64(totalWeight) * (1 - cs.WeightPenalty*float64(cs.Edges2Shard[uShard])/float64(cs.MinEdges2Shard))
+	// score = 0.5*float64(shardWeight)/float64(totalWeight) + 0.5*stability
+	// score = float64(shardWeight) / float64(totalWeight)
 	return score
+}
+
+func (cs *RLPAState) GetEarliestTransactionTime() float64 {
+	earliestTime := math.MaxFloat64
+	for _, neighbors := range cs.NetGraph.EdgeTimes {
+		for _, times := range neighbors {
+			if len(times) > 0 {
+				minTime := times[0] // 假设 times 已排序
+				if minTime < earliestTime {
+					earliestTime = minTime
+				}
+			}
+		}
+	}
+	return earliestTime
+}
+
+func (cs *RLPAState) PrintAllEdgeTimes() {
+	for v, neighbors := range cs.NetGraph.EdgeTimes {
+		for u, times := range neighbors {
+			fmt.Printf("Edge %v -> %v: Times: %v\n", v.Addr, u.Addr, times)
+		}
+	}
+}
+
+func (cs *RLPAState) CalculateAverageTransactionVolume(a float64) map[int]float64 {
+	// 存储每个分片的总交易量
+	shardTransactionVolume := make(map[int]float64)
+	// // 存储每个分片的边数
+	// shardEdgeCount := make(map[int]int)
+
+	// 遍历图中的所有节点
+	for v, neighbors := range cs.NetGraph.EdgeSet {
+		vShard := cs.PartitionMap[v] // 获取节点 v 所属的分片
+		for u, weight := range neighbors {
+			uShard := cs.PartitionMap[u]
+			if vShard == uShard { // 只统计同一分片内的边
+				shardTransactionVolume[vShard] += weight // 累加边的权值
+				// shardEdgeCount[vShard]++
+			}
+		}
+	}
+
+	// 计算每个分片的平均交易量
+	averageTransactionVolume := make(map[int]float64)
+	for shard, totalVolume := range shardTransactionVolume {
+		// if shardEdgeCount[shard] > 0 {
+		// 	averageTransactionVolume[shard] = totalVolume / a
+		// } else {
+		// 	averageTransactionVolume[shard] = 0 // 如果没有边，平均交易量为 0
+		// }
+		averageTransactionVolume[shard] = totalVolume / a
+	}
+
+	return averageTransactionVolume
+}
+
+func (cs *RLPAState) CalculateTransactionVolumeStability(t0, a float64) float64 {
+	// 存储每个分片的当前交易量
+	currentTransactionVolume := make(map[int]float64)
+
+	// 遍历图中的所有边，统计时间范围 [t0, t0+a] 内的交易量
+	for v, neighbors := range cs.NetGraph.EdgeTimes {
+		vShard := cs.PartitionMap[v] // 获取节点 v 所属的分片
+		for u, times := range neighbors {
+			uShard := cs.PartitionMap[u]
+			if vShard == uShard { // 只统计同一分片内的边
+				for _, t := range times {
+					if t >= t0 && t <= t0+a { // 判断交易时间是否在 [t0, t0+a] 范围内
+						currentTransactionVolume[vShard] += cs.NetGraph.EdgeSet[v][u] // 累加边的权值
+					}
+				}
+			}
+		}
+	}
+
+	// 获取时间间隔 a 的平均交易量
+	averageTransactionVolume := cs.CalculateAverageTransactionVolume(a)
+
+	// 计算每个分片的交易量差值的平方和
+	squaredDifference := 0.0
+	T := 0.0
+	for _, neighbors := range cs.NetGraph.EdgeTimes {
+		for _, times := range neighbors {
+			if len(times) > 1 {
+				duration := times[len(times)-1] - times[0] // 最大时间 - 最小时间
+				T += duration
+			}
+		}
+	}
+	for shard, currentVolume := range currentTransactionVolume {
+		avgVolume := averageTransactionVolume[shard]
+		diff := currentVolume - avgVolume
+		squaredDifference += diff * diff
+	}
+	variance := math.Sqrt(squaredDifference / (float64(cs.ShardNum) * T))
+	stability := 1 / (1 + math.Exp(-1/variance))
+
+	return stability
 }
 
 // 计算 将节点 v 放入 uShard 所产生的 score
@@ -308,6 +422,7 @@ func (cs *RLPAState) RLPA_Partition() (map[string]uint64, int) {
 					if max_score < neighborShardScore[uShard] {
 						max_score = neighborShardScore[uShard]
 						max_scoreShard = uShard
+						// fmt.Println("max_score:", max_score, "max_scoreShard:", max_scoreShard)
 					}
 				}
 			}
@@ -326,52 +441,6 @@ func (cs *RLPAState) RLPA_Partition() (map[string]uint64, int) {
 	}
 	cs.ComputeEdges2Shard()
 	fmt.Println("After running RLPA, cross-shard edge number:", cs.CrossShardEdgeNum)
-	return res, cs.CrossShardEdgeNum
-}
-
-// CLPA 划分算法
-func (cs *RLPAState) CLPA_Partition() (map[string]uint64, int) {
-	cs.ComputeEdges2Shard()
-	fmt.Println("Before running CLPA, cross-shard edge number:", cs.CrossShardEdgeNum)
-	res := make(map[string]uint64)
-	updateTreshold := make(map[string]int)
-	for iter := 0; iter < cs.MaxIterations; iter += 1 { // 第一层循环控制算法次数，constraint
-		for v := range cs.NetGraph.VertexSet {
-			if updateTreshold[v.Addr] >= 50 {
-				continue
-			}
-			neighborShardScore := make(map[int]float64)
-			max_score := -9999.0
-			vNowShard, max_scoreShard := cs.PartitionMap[v], cs.PartitionMap[v]
-			for u := range cs.NetGraph.EdgeSet[v] {
-				uShard := cs.PartitionMap[u]
-				// 对于属于 uShard 的邻居，仅需计算一次
-				if _, computed := neighborShardScore[uShard]; !computed {
-					neighborShardScore[uShard] = cs.getShard_score2(v, uShard)
-					if max_score < neighborShardScore[uShard] {
-						max_score = neighborShardScore[uShard]
-						max_scoreShard = uShard
-					}
-				}
-			}
-			if vNowShard != max_scoreShard && cs.VertexsNumInShard[vNowShard] > 1 {
-				cs.PartitionMap[v] = max_scoreShard
-				res[v.Addr] = uint64(max_scoreShard)
-				updateTreshold[v.Addr]++
-				// 重新计算 VertexsNumInShard
-				cs.VertexsNumInShard[vNowShard] -= 1
-				cs.VertexsNumInShard[max_scoreShard] += 1
-				// 重新计算Wk
-				cs.changeShardRecompute(v, vNowShard)
-			}
-		}
-	}
-	for sid, n := range cs.VertexsNumInShard {
-		fmt.Printf("%d has vertexs: %d\n", sid, n)
-	}
-
-	cs.ComputeEdges2Shard()
-	fmt.Println("After running CLPA, cross-shard edge number:", cs.CrossShardEdgeNum)
 	return res, cs.CrossShardEdgeNum
 }
 

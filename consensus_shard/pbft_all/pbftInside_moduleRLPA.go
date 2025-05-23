@@ -80,20 +80,6 @@ func (cphm *RLPAPbftInsideExtraHandleMod) HandleinCommit(cmsg *message.Commit) b
 		// if a partition Requst ...
 		atm := message.DecodeAccountTransferMsg(r.Msg.Content)
 		cphm.accountTransfer_do(atm)
-
-		// // 检查是否为热点账户
-		// if cphm.cdm.IsHotAccount(atm.Sender) || cphm.cdm.IsHotAccount(atm.Recipient) {
-		// 	// 更新关联度
-		// 	t_now := time.Now().Unix()
-		// 	// 如果是热点账户，则更新图
-		// 	sender := partition.Vertex{Addr: atm.Sender}
-		// 	recipient := partition.Vertex{Addr: atm.Recipient}
-		// 	cphm.pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
-		// }
-
-		// sender := partition.Vertex{Addr: atm.Sender}
-		// recipient := partition.Vertex{Addr: atm.Recipient}
-		// cphm.pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
 		return true
 	}
 	// if a block request ...
@@ -217,16 +203,6 @@ func (cphm *RLPAPbftInsideExtraHandleMod) HandleforSequentialRequest(som *messag
 			} else {
 				atm := message.DecodeAccountTransferMsg(r.Msg.Content)
 				cphm.accountTransfer_do(atm)
-				// if cphm.cdm.IsHotAccount(atm.Sender) || cphm.cdm.IsHotAccount(atm.Recipient) {
-				// 	// 如果是热点账户，则执行账户转账逻辑
-				// 	cphm.accountTransfer_do(atm)
-
-				// // 更新图
-				// t_now := time.Now().Unix()
-				// sender := partition.Vertex{Addr: atm.Sender}
-				// recipient := partition.Vertex{Addr: atm.Recipient}
-				// cphm.pbftNode.NetGraph.AddEdgeWithTime(sender, recipient, t_now, TimeWindow)
-				// }
 			}
 		}
 		cphm.pbftNode.sequenceID = som.SeqEndHeight + 1

@@ -111,6 +111,7 @@ func (ccm *CLPACommitteeModule) MsgSendingControl() {
 	reader := csv.NewReader(txfile)
 	txlist := make([]*core.Transaction, 0) // save the txs in this epoch (round)
 	clpaCnt := 0
+	// flag := true
 	for {
 		data, err := reader.Read()
 		if err == io.EOF {
@@ -139,6 +140,23 @@ func (ccm *CLPACommitteeModule) MsgSendingControl() {
 			ccm.Ss.StopGap_Reset()
 		}
 
+		// if params.ShardNum > 1 && !ccm.clpaLastRunningTime.IsZero() && time.Since(ccm.clpaLastRunningTime) >= time.Duration(0.5*float64(ccm.clpaFreq))*time.Second && time.Since(ccm.clpaLastRunningTime) < time.Duration(ccm.clpaFreq)*time.Second && flag {
+		// 	ccm.clpaLock.Lock()
+		// 	clpaCnt++
+		// 	mmap, _ := ccm.clpaGraph.CLPA_Partition()
+
+		// 	ccm.clpaMapSend(mmap)
+		// 	for key, val := range mmap {
+		// 		ccm.modifiedMap[key] = val
+		// 	}
+		// 	ccm.clpaReset()
+		// 	ccm.clpaLock.Unlock()
+		// 	flag = false
+		// 	ccm.sl.Slog.Println("Run CLPA Duration ")
+		// 	if ccm.nowDataNum == ccm.dataTotalNum {
+		// 		break
+		// 	}
+		// }
 		if params.ShardNum > 1 && !ccm.clpaLastRunningTime.IsZero() && time.Since(ccm.clpaLastRunningTime) >= time.Duration(ccm.clpaFreq)*time.Second {
 			ccm.clpaLock.Lock()
 			clpaCnt++
@@ -221,9 +239,17 @@ func (ccm *CLPACommitteeModule) HandleBlockInfo(b *message.BlockInfoMsg) {
 	}
 	ccm.clpaLock.Lock()
 	for _, tx := range b.InnerShardTxs {
+		// ccm.clpaGraph.UpdateAccountFrequency(tx.Sender, tx.Recipient)
+		// if ccm.clpaGraph.IsHotAccount(tx.Sender) || ccm.clpaGraph.IsHotAccount(tx.Recipient) {
+		// 	ccm.clpaGraph.AddEdge(partition.Vertex{Addr: tx.Sender}, partition.Vertex{Addr: tx.Recipient})
+		// }
 		ccm.clpaGraph.AddEdge(partition.Vertex{Addr: tx.Sender}, partition.Vertex{Addr: tx.Recipient})
 	}
 	for _, r2tx := range b.Relay2Txs {
+		// ccm.clpaGraph.UpdateAccountFrequency(r2tx.Sender, r2tx.Recipient)
+		// if ccm.clpaGraph.IsHotAccount(r2tx.Sender) || ccm.clpaGraph.IsHotAccount(r2tx.Recipient) {
+		// 	ccm.clpaGraph.AddEdge(partition.Vertex{Addr: r2tx.Sender}, partition.Vertex{Addr: r2tx.Recipient})
+		// }
 		ccm.clpaGraph.AddEdge(partition.Vertex{Addr: r2tx.Sender}, partition.Vertex{Addr: r2tx.Recipient})
 	}
 	ccm.clpaLock.Unlock()
