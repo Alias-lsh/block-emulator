@@ -127,3 +127,31 @@ func (rthm *RelayCommitteeModule) MsgSendingControl() {
 func (rthm *RelayCommitteeModule) HandleBlockInfo(b *message.BlockInfoMsg) {
 	rthm.sl.Slog.Printf("received from shard %d in epoch %d.\n", b.SenderShardID, b.Epoch)
 }
+
+// no operation here
+func (rthm *RelayCommitteeModule) HandleNodeAction(content []byte) {
+	// na := new(message.NodeAction)
+	// na.SafeVauleInEpoch = make(map[uint64]float32)
+	// na.TxinEpoch = make(map[uint64]float32)
+
+	// err := json.Unmarshal(content, na)
+	// if err != nil {
+	// 	rthm.sl.Slog.Printf("Supervisor: json.Unmarshal error: %v\n", err)
+	// 	log.Panic(err)
+	// }
+	// rthm.sl.Slog.Printf("Supervisor: begins update node value using nodeAction message.\n")
+	// //epoch节点贡献值更新
+	// //打印节点贡献值
+	// for nodeID, safeValue := range na.SafeVauleInEpoch {
+	// 	rthm.sl.Slog.Printf("Supervisor: shard %d node %d safe value is %f\n", na.ShardIndex, nodeID, safeValue)
+	// 	rthm.nodeValueHistory.temSafeVaule[na.ShardIndex][nodeID] = safeValue
+	// }
+	// for nodeID, txValue := range na.TxinEpoch {
+	// 	rthm.sl.Slog.Printf("Supervisor: shard %d node %d tx value is %f\n", na.ShardIndex, nodeID, txValue)
+	// 	rthm.nodeValueHistory.temPerformanceVaule[na.ShardIndex][nodeID] = txValue
+	// }
+	// rthm.sl.Slog.Printf("Supervisor: have updated node value using nodeAction message.\n")
+}
+
+// no operation here
+func (rthm *RelayCommitteeModule) OutputNodeValue() {}

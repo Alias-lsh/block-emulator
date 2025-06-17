@@ -47,34 +47,3 @@ func NewRLPADataSupport() *Data_supportRLPA {
 		// HotAccounts:      make(map[string]bool),
 	}
 }
-
-// // 添加交易时间
-// func (ds *Data_supportRLPA) AddTransactionTime(sender, recipient string, t_now int64) {
-// 	key := sender + "->" + recipient
-// 	ds.TransactionTimes[key] = append(ds.TransactionTimes[key], t_now)
-// }
-
-// // 更新账户交易频率
-// func (ds *Data_supportRLPA) UpdateAccountFrequency(sender, recipient string) {
-// 	ds.HotAccountLock.Lock()
-// 	defer ds.HotAccountLock.Unlock()
-
-// 	ds.AccountFrequency[sender]++
-// 	ds.AccountFrequency[recipient]++
-
-// 	// 判断是否为热点账户
-// 	if ds.AccountFrequency[sender] > 1000 {
-// 		ds.HotAccounts[sender] = true
-// 	}
-// 	if ds.AccountFrequency[recipient] > 1000 {
-// 		ds.HotAccounts[recipient] = true
-// 	}
-// }
-
-// // 判断是否为热点账户
-// func (ds *Data_supportRLPA) IsHotAccount(account string) bool {
-// 	ds.HotAccountLock.Lock()
-// 	defer ds.HotAccountLock.Unlock()
-
-// 	return ds.HotAccounts[account]
-// }

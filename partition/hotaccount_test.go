@@ -70,6 +70,53 @@ func ProcessCSVFile(filename string, fromCol, toCol int) (*TransactionStats, err
 	return stats, nil
 }
 
+func ProcessCSVFile2(filename string, fromCol, toCol int, maxLines int) (*TransactionStats, error) {
+	stats := NewTransactionStats()
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("无法打开文件: %v", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	lineNumber := 0
+
+	for {
+		if maxLines > 0 && lineNumber >= maxLines {
+			break
+		}
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("行 %d 解析错误: %v", lineNumber, err)
+			continue
+		}
+		lineNumber++
+
+		// 检查列数是否足够
+		if len(record) <= fromCol || len(record) <= toCol {
+			log.Printf("行 %d 列数不足，跳过", lineNumber)
+			continue
+		}
+
+		fromAddr := strings.ToLower(strings.TrimSpace(record[fromCol]))
+		toAddr := strings.ToLower(strings.TrimSpace(record[toCol]))
+
+		// 统计地址交易次数
+		stats.AddressCounts[fromAddr]++
+		stats.AddressCounts[toAddr]++
+
+		// 生成排序后的地址对
+		pair := SortAddressPair(fromAddr, toAddr)
+		stats.PairCounts[pair]++
+	}
+
+	return stats, nil
+}
+
 // 生成排序后的地址对
 func SortAddressPair(a, b string) [2]string {
 	if a < b {
@@ -188,13 +235,14 @@ func sortPairCounts(counts map[[2]string]int) []PairCount {
 func TestHotaccount(t *testing.T) {
 	// 配置参数
 	const (
-		outputPrefix = "results"
+		outputPrefix = "results2"
 		fromCol      = 3 // 发送方地址列索引
 		toCol        = 4 // 接收方地址列索引
+		maxLines     = 300000
 	)
 	inputFile := "../" + params.DatasetFile
 	// 处理CSV文件
-	stats, err := ProcessCSVFile(inputFile, fromCol, toCol)
+	stats, err := ProcessCSVFile2(inputFile, fromCol, toCol, maxLines)
 	if err != nil {
 		log.Fatalf("处理文件失败: %v", err)
 	}

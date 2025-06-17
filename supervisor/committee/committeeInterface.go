@@ -6,4 +6,6 @@ type CommitteeModule interface {
 	HandleBlockInfo(*message.BlockInfoMsg)
 	MsgSendingControl()
 	HandleOtherMessage([]byte)
+	HandleNodeAction([]byte)
+	OutputNodeValue()
 }

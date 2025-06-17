@@ -16,10 +16,11 @@ import (
 type RLPAPbftInsideExtraHandleMod struct {
 	cdm      *dataSupport.Data_supportRLPA
 	pbftNode *PbftConsensusNode
+	epochID  int
 }
 
 // propose request with different types
-func (cphm *RLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Request) {
+func (cphm *RLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Request, uint64) {
 	if cphm.cdm.PartitionOn {
 		cphm.sendPartitionReady()
 		for !cphm.getPartitionReady() {
@@ -31,7 +32,9 @@ func (cphm *RLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Requ
 		for !cphm.getCollectOver() {
 			time.Sleep(time.Second)
 		}
-		return cphm.proposePartition()
+		// return cphm.proposePartition()
+		result1, result2 := cphm.proposePartition()
+		return result1, result2, uint64(0)
 	}
 
 	// ELSE: propose a block
@@ -41,7 +44,9 @@ func (cphm *RLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Requ
 		ReqTime:     time.Now(),
 	}
 	r.Msg.Content = block.Encode()
-	return true, r
+	//记录区块内交易数
+	txNumInBlock := uint64(len(block.Body))
+	return true, r, txNumInBlock
 
 }
 
@@ -132,7 +137,7 @@ func (cphm *RLPAPbftInsideExtraHandleMod) HandleinCommit(cmsg *message.Commit) b
 		bim := message.BlockInfoMsg{
 			BlockBodyLength: len(block.Body),
 			InnerShardTxs:   interShardTxs,
-			Epoch:           int(cphm.cdm.AccountTransferRound),
+			Epoch:           cphm.epochID,
 
 			Relay1Txs: relay1Txs,
 			Relay2Txs: relay2Txs,
@@ -209,4 +214,9 @@ func (cphm *RLPAPbftInsideExtraHandleMod) HandleforSequentialRequest(som *messag
 		cphm.pbftNode.CurChain.PrintBlockChain()
 	}
 	return true
+}
+func (cphm *RLPAPbftInsideExtraHandleMod) UpdateEpochID(epochID int) {
+	// if cphm.epochID < epochID {
+	cphm.epochID = epochID
+	//}
 }

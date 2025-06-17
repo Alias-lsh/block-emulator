@@ -26,6 +26,11 @@ const (
 
 	CBlockInfo MessageType = "BlockInfo"
 	CSeqIDinfo MessageType = "SequenceID"
+
+	CNodeMigration MessageType = "NodeMigration"
+
+	//添加新的消息类型：节点行为
+	CNodeAction MessageType = "NodeAction"
 )
 
 var (
@@ -116,6 +121,21 @@ type BlockInfoMsg struct {
 type SeqIDinfo struct {
 	SenderShardID uint64
 	SenderSeq     uint64
+}
+
+type NodeMigrationMsg struct {
+	NodeID   uint64
+	NewIP    string
+	NewShard uint64
+}
+
+type NodeAction struct {
+	//Node *shard.Node
+	ShardIndex            uint64
+	EpochID               int
+	SequenceIDInThisShard uint64
+	SafeVauleInEpoch      map[uint64]float32
+	TxinEpoch             map[uint64]float32
 }
 
 func MergeMessage(msgType MessageType, content []byte) []byte {

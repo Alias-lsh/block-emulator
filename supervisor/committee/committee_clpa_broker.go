@@ -449,3 +449,6 @@ func (ccm *CLPACommitteeMod_Broker) handleTx2ConfirmMag(mag2confirms []*message.
 	ccm.brokerModuleLock.Unlock()
 	fmt.Println("finish ctx with adding tx1 and tx2 to txpool,len", num)
 }
+func (ccm *CLPACommitteeMod_Broker) HandleNodeAction(content []byte) {}
+
+func (ccm *CLPACommitteeMod_Broker) OutputNodeValue() {}

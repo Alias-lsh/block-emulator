@@ -21,7 +21,7 @@ type RawRelayPbftExtraHandleMod struct {
 }
 
 // propose request with different types
-func (rphm *RawRelayPbftExtraHandleMod) HandleinPropose() (bool, *message.Request) {
+func (rphm *RawRelayPbftExtraHandleMod) HandleinPropose() (bool, *message.Request, uint64) {
 	// new blocks
 	block := rphm.pbftNode.CurChain.GenerateBlock(int32(rphm.pbftNode.NodeID))
 	r := &message.Request{
@@ -30,7 +30,10 @@ func (rphm *RawRelayPbftExtraHandleMod) HandleinPropose() (bool, *message.Reques
 	}
 	r.Msg.Content = block.Encode()
 
-	return true, r
+	//记录区块内交易数
+	txNumInBlock := uint64(len(block.Body))
+	return true, r, txNumInBlock
+	// return true, r
 }
 
 // the DIY operation in preprepare
@@ -175,4 +178,6 @@ func (rphm *RawRelayPbftExtraHandleMod) HandleforSequentialRequest(som *message.
 		rphm.pbftNode.CurChain.PrintBlockChain()
 	}
 	return true
+}
+func (rphm *RawRelayPbftExtraHandleMod) UpdateEpochID(epochID int) {
 }

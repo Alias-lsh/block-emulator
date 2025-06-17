@@ -5,26 +5,35 @@ import (
 	"blockEmulator/networks"
 	"blockEmulator/params"
 	"blockEmulator/supervisor"
-	"log"
+	"strconv"
 	"time"
 )
 
 func initConfig(nid, nnm, sid, snm uint64) *params.ChainConfig {
-	// Read the contents of ipTable.json
-	ipMap := readIpTable("./ipTable.json")
-	params.IPmap_nodeTable = ipMap
-	params.SupervisorAddr = params.IPmap_nodeTable[params.SupervisorShard][0]
+	// // Read the contents of ipTable.json
+	// ipMap := readIpTable("./ipTable.json")
+	// params.IPmap_nodeTable = ipMap
+	// params.SupervisorAddr = params.IPmap_nodeTable[params.SupervisorShard][0]
 
-	// check the correctness of params
-	if len(ipMap)-1 < int(snm) {
-		log.Panicf("Input ShardNumber = %d, but only %d shards in ipTable.json.\n", snm, len(ipMap)-1)
-	}
-	for shardID := 0; shardID < len(ipMap)-1; shardID++ {
-		if len(ipMap[uint64(shardID)]) < int(nnm) {
-			log.Panicf("Input NodeNumber = %d, but only %d nodes in Shard %d.\n", nnm, len(ipMap[uint64(shardID)]), shardID)
+	// // check the correctness of params
+	// if len(ipMap)-1 < int(snm) {
+	// 	log.Panicf("Input ShardNumber = %d, but only %d shards in ipTable.json.\n", snm, len(ipMap)-1)
+	// }
+	// for shardID := 0; shardID < len(ipMap)-1; shardID++ {
+	// 	if len(ipMap[uint64(shardID)]) < int(nnm) {
+	// 		log.Panicf("Input NodeNumber = %d, but only %d nodes in Shard %d.\n", nnm, len(ipMap[uint64(shardID)]), shardID)
+	// 	}
+	// }
+	for i := uint64(0); i < snm; i++ {
+		if _, ok := params.IPmap_nodeTable[i]; !ok {
+			params.IPmap_nodeTable[i] = make(map[uint64]string)
+		}
+		for j := uint64(0); j < nnm; j++ {
+			params.IPmap_nodeTable[i][j] = "127.0.0.1:" + strconv.Itoa(28800+int(i)*100+int(j))
 		}
 	}
-
+	params.IPmap_nodeTable[params.SupervisorShard] = make(map[uint64]string)
+	params.IPmap_nodeTable[params.SupervisorShard][0] = params.SupervisorAddr
 	params.NodesInShard = int(nnm)
 	params.ShardNum = int(snm)
 
@@ -49,6 +58,8 @@ func BuildSupervisor(nnm, snm uint64) {
 	var measureMod []string
 	if methodID == 0 || methodID == 2 {
 		measureMod = params.MeasureBrokerMod
+	} else if methodID == 5 {
+		measureMod = params.MeasurePLouvainMod
 	} else {
 		measureMod = params.MeasureRelayMod
 	}

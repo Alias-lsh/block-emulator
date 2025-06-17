@@ -12,6 +12,7 @@ import (
 	"blockEmulator/partition"
 	"blockEmulator/shard"
 	"bufio"
+	"encoding/json"
 	"io"
 	"log"
 	"net"
@@ -85,6 +86,28 @@ type PbftConsensusNode struct {
 	// to handle the message outside of pbft
 	ohm OpInterShards
 
+	// 节点贡献值记录
+	//添加变量，记录所在分片内各节点的作为主节点、从节点的正确、错误行为数，
+	//即$N_{MR_i}、N_{FR_i}、N_{MW_i}、N_{FW_i}$，其中$i$为节点编号
+	//同时记录所在分片内各节点在epoch内的累计贡献交易$TX_j^i$
+	//即$TX_{j}^i$，其中$j$为区块编号，包括成功提交和失败提交的区块
+	nodeMR           map[uint64]uint64
+	nodeFR           map[uint64]uint64
+	nodeMW           map[uint64]uint64
+	nodeFW           map[uint64]uint64
+	safeVauleInEpoch map[uint64]float32 //记录每个节点在epoch内的安全贡献值变化
+	txNumInBlock     uint64             //记录上一个区块的交易数
+	TXi              map[uint64]float32 //记录每个节点的累计贡献交易数
+	//perforVauleInEpoch map[uint64]uint64  //记录每个节点在epoch内的性能贡献值变化
+
+	lastDigest         string //上一个区块的消息摘要
+	lastBlockIfSuccess bool   //上一个区块是否成功提交
+	lastBlockIfPartion bool   //上一个区块是否分片
+
+	ifSetMalicious bool   //是否可能作恶
+	ifSetDelay     bool   //是否可能延迟
+	maliciousIP    string //作恶IP
+
 	// 用于存储跨分片交易的时间信息
 	// TransactionTimes map[string][]int64 // key: "sender->recipient", value: list of transaction timestamps
 	NetGraph *partition.RGraph // 图结构，用于存储节点和边
@@ -143,6 +166,22 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 
 	p.pl = pbft_log.NewPbftLog(shardID, nodeID)
 
+	// 节点贡献值记录
+	p.nodeMR = make(map[uint64]uint64)
+	p.nodeFR = make(map[uint64]uint64)
+	p.nodeMW = make(map[uint64]uint64)
+	p.nodeFW = make(map[uint64]uint64)
+	p.TXi = make(map[uint64]float32)
+	p.safeVauleInEpoch = make(map[uint64]float32)
+	//p.perforVauleInEpoch = make(map[uint64]uint64)
+	p.txNumInBlock = 0
+	p.lastDigest = ""
+	p.lastBlockIfSuccess = false
+	p.lastBlockIfPartion = false
+	p.ifSetMalicious = params.IfSetMalicious
+	p.ifSetDelay = params.IfSetDelay
+	p.maliciousIP = p.ip_nodeTable[shardID][nodeID]
+
 	// choose how to handle the messages in pbft or beyond pbft
 	switch string(messageHandleType) {
 	case "CLPA_Broker":
@@ -170,6 +209,7 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 		p.ihm = &RLPAPbftInsideExtraHandleMod{
 			pbftNode: p,
 			cdm:      ncdm,
+			epochID:  0,
 		}
 		p.ohm = &RLPARelayOutsideModule{
 			pbftNode: p,
@@ -181,6 +221,17 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 		}
 		p.ohm = &RawBrokerOutsideModule{
 			pbftNode: p,
+		}
+	case "P-Louvain":
+		ncdm := dataSupport.NewCLPADataSupport()
+		p.ihm = &PLouvainPbftInsideExtraHandleMod{
+			pbftNode: p,
+			cdm:      ncdm,
+			epochID:  0,
+		}
+		p.ohm = &PLouvainRelayOutsideModule{
+			pbftNode: p,
+			cdm:      ncdm,
 		}
 	default:
 		p.ihm = &RawRelayPbftExtraHandleMod{
@@ -223,6 +274,11 @@ func (p *PbftConsensusNode) handleMessage(msg []byte) {
 		p.handleRequestOldSeq(content)
 	case message.CSendOldrequest:
 		p.handleSendOldSeq(content)
+	case message.CNodeMigration:
+		p.handleNodeMigration(content)
+	case message.NodeAllocMsg:
+		p.clearActionRecord()
+		p.handleNodeAlloc(content)
 
 	case message.CStop:
 		p.WaitToStop()
@@ -231,6 +287,29 @@ func (p *PbftConsensusNode) handleMessage(msg []byte) {
 	default:
 		go p.ohm.HandleMessageOutsidePBFT(msgType, content)
 	}
+}
+
+// 清除本地贡献交易、行为记录
+func (p *PbftConsensusNode) clearActionRecord() {
+	p.nodeMR = make(map[uint64]uint64)
+	p.nodeFR = make(map[uint64]uint64)
+	p.nodeMW = make(map[uint64]uint64)
+	p.nodeFW = make(map[uint64]uint64)
+	p.TXi = make(map[uint64]float32)
+	p.safeVauleInEpoch = make(map[uint64]float32)
+}
+
+// when the leader received the nodeNewMap message, it should update the local nodeNewMap
+func (p *PbftConsensusNode) handleNodeAlloc(content []byte) {
+	nnm := new(message.NodeAllocResult)
+	err := json.Unmarshal(content, nnm)
+	if err != nil {
+		log.Panic()
+	}
+	p.pl.Plog.Println("NodeMaliciousIP数组：", nnm.NodeMaliciousIP)
+	p.maliciousIP = nnm.NodeMaliciousIP[p.RunningNode.IPaddr]
+	p.ihm.UpdateEpochID(nnm.EpochID)
+	p.pl.Plog.Printf("S%dN%d : has received epoch %d nodeAlloc message and change my maliciousIP\n", p.ShardID, p.NodeID, nnm.EpochID)
 }
 
 func (p *PbftConsensusNode) handleClientRequest(con net.Conn) {

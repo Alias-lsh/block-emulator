@@ -13,13 +13,15 @@ import (
 	"time"
 )
 
-type CLPAPbftInsideExtraHandleMod_forBroker struct {
+type PLouvainPbftInsideExtraHandleMod struct {
 	cdm      *dataSupport.Data_supportCLPA
 	pbftNode *PbftConsensusNode
+
+	epochID int
 }
 
 // propose request with different types
-func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinPropose() (bool, *message.Request, uint64) {
+func (cphm *PLouvainPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Request, uint64) {
 	if cphm.cdm.PartitionOn {
 		cphm.sendPartitionReady()
 		for !cphm.getPartitionReady() {
@@ -31,7 +33,6 @@ func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinPropose() (bool, *me
 		for !cphm.getCollectOver() {
 			time.Sleep(time.Second)
 		}
-		// return cphm.proposePartition()
 		result1, result2 := cphm.proposePartition()
 		return result1, result2, uint64(0)
 	}
@@ -43,125 +44,129 @@ func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinPropose() (bool, *me
 		ReqTime:     time.Now(),
 	}
 	r.Msg.Content = block.Encode()
-	// return true, r, uint64(len(block.Body))
+
+	//记录区块内交易数
 	txNumInBlock := uint64(len(block.Body))
 	return true, r, txNumInBlock
 
 }
 
 // the diy operation in preprepare
-func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinPrePrepare(ppmsg *message.PrePrepare) bool {
+func (cphm *PLouvainPbftInsideExtraHandleMod) HandleinPrePrepare(ppmsg *message.PrePrepare) bool {
 	// judge whether it is a partitionRequest or not
 	isPartitionReq := ppmsg.RequestMsg.RequestType == message.PartitionReq
 
 	if isPartitionReq {
 		// after some checking
 		cphm.pbftNode.pl.Plog.Printf("S%dN%d : a partition block\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
+		cphm.pbftNode.pl.Plog.Printf("S%dN%d : the partition pre-prepare message is correct, putting it into the RequestPool. \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
 	} else {
 		// the request is a block
 		if cphm.pbftNode.CurChain.IsValidBlock(core.DecodeB(ppmsg.RequestMsg.Msg.Content)) != nil {
 			cphm.pbftNode.pl.Plog.Printf("S%dN%d : not a valid block\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
 			return false
 		}
+		MsgTxNum := len(core.DecodeB(ppmsg.RequestMsg.Msg.Content).Body)
+		cphm.pbftNode.pl.Plog.Printf("S%dN%d : the BlockInfo pre-prepare message with %d Txs is correct, putting it into the RequestPool. \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, MsgTxNum)
 	}
-	cphm.pbftNode.pl.Plog.Printf("S%dN%d : the pre-prepare message is correct, putting it into the RequestPool. \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
+
 	cphm.pbftNode.requestPool[string(ppmsg.Digest)] = ppmsg.RequestMsg
 	// merge to be a prepare message
 	return true
 }
 
 // the operation in prepare, and in pbft + tx relaying, this function does not need to do any.
-func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinPrepare(pmsg *message.Prepare) bool {
+func (cphm *PLouvainPbftInsideExtraHandleMod) HandleinPrepare(pmsg *message.Prepare) bool {
 	fmt.Println("No operations are performed in Extra handle mod")
 	return true
 }
 
+// // the operation record the node's commit status
+// type Data_supportPLouvain struct {
+// 	nodeFR map[int]bool // Add the missing field nodeFR
+// }
+
 // the operation in commit.
-func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinCommit(cmsg *message.Commit) bool {
+func (cphm *PLouvainPbftInsideExtraHandleMod) HandleinCommit(cmsg *message.Commit) bool {
 	r := cphm.pbftNode.requestPool[string(cmsg.Digest)]
 	// requestType ...
 	if r.RequestType == message.PartitionReq {
 		// if a partition Requst ...
 		atm := message.DecodeAccountTransferMsg(r.Msg.Content)
 		cphm.accountTransfer_do(atm)
+		cphm.pbftNode.pl.Plog.Printf("S%dN%d : received PartitionReq Block and have transfered accounts \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
 		return true
 	}
 	// if a block request ...
+	if r.RequestType == message.BlockRequest {
+		cphm.pbftNode.pl.Plog.Printf("S%dN%d : received BlockInfo Block with length %d\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, len(r.Msg.Content))
+	} else {
+		log.Panic("incorrect request type")
+		cphm.pbftNode.pl.Plog.Printf("S%dN%d : incorrect request type\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
+	}
+
 	block := core.DecodeB(r.Msg.Content)
 	cphm.pbftNode.pl.Plog.Printf("S%dN%d : adding the block %d...now height = %d \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, block.Header.Number, cphm.pbftNode.CurChain.CurrentBlock.Header.Number)
 	cphm.pbftNode.CurChain.AddBlock(block)
-	cphm.pbftNode.pl.Plog.Printf("S%dN%d : added the block %d... \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, block.Header.Number)
+	cphm.pbftNode.pl.Plog.Printf("S%dN%d : added the block %d with %d TXs... \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, block.Header.Number, len(block.Body))
 	cphm.pbftNode.CurChain.PrintBlockChain()
 
-	// now try to relay txs to other shards (for main nodes)
+	// now try to relay txs to other shards (for main nodes)主节点才执行下面步骤
 	if cphm.pbftNode.NodeID == uint64(cphm.pbftNode.view.Load()) {
-		cphm.pbftNode.pl.Plog.Printf("S%dN%d : main node is trying to send broker confirm txs at height = %d \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, block.Header.Number)
-		// generate brokertxs and collect txs excuted
-		innerShardTxs := make([]*core.Transaction, 0)
-		broker1Txs := make([]*core.Transaction, 0)
-		broker2Txs := make([]*core.Transaction, 0)
-
-		// generate block infos
+		cphm.pbftNode.pl.Plog.Printf("S%dN%d : main node is trying to send relay txs at height = %d \n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, block.Header.Number)
+		// generate relay pool and collect txs excuted
+		txExcuted := make([]*core.Transaction, 0)
+		cphm.pbftNode.CurChain.Txpool.RelayPool = make(map[uint64][]*core.Transaction)
+		relay1Txs := make([]*core.Transaction, 0)
+		relay2Txs := make([]*core.Transaction, 0)
 		for _, tx := range block.Body {
-			isBroker1Tx := tx.Sender == tx.OriginalSender
-			isBroker2Tx := tx.Recipient == tx.FinalRecipient
-
-			senderIsInshard := cphm.pbftNode.CurChain.Get_PartitionMap(tx.Sender) == cphm.pbftNode.ShardID
-			recipientIsInshard := cphm.pbftNode.CurChain.Get_PartitionMap(tx.Recipient) == cphm.pbftNode.ShardID
-			if isBroker1Tx && !senderIsInshard {
-				log.Panic("Err tx1")
+			ssid := cphm.pbftNode.CurChain.Get_PartitionMap(tx.Sender)
+			rsid := cphm.pbftNode.CurChain.Get_PartitionMap(tx.Recipient)
+			if !tx.Relayed && ssid != cphm.pbftNode.ShardID {
+				log.Panic("incorrect tx")
 			}
-			if isBroker2Tx && !recipientIsInshard {
-				log.Panic("Err tx2")
+			if tx.Relayed && rsid != cphm.pbftNode.ShardID {
+				log.Panic("incorrect tx")
 			}
-			if tx.RawTxHash == nil {
-				if tx.HasBroker {
-					if tx.SenderIsBroker && !recipientIsInshard {
-						log.Panic("err tx 1 - recipient")
-					}
-					if !tx.SenderIsBroker && !senderIsInshard {
-						log.Panic("err tx 1 - sender")
-					}
+			if !tx.Relayed && rsid != cphm.pbftNode.ShardID {
+				relay1Txs = append(relay1Txs, tx)
+				tx.Relayed = true
+				cphm.pbftNode.CurChain.Txpool.AddRelayTx(tx, rsid)
+			} else {
+				if tx.Relayed {
+					relay2Txs = append(relay2Txs, tx)
 				} else {
-					if !senderIsInshard || !recipientIsInshard {
-						log.Panic("err tx - without broker")
-					}
+					txExcuted = append(txExcuted, tx)
 				}
 			}
-
-			if isBroker2Tx {
-				broker2Txs = append(broker2Txs, tx)
-			} else if isBroker1Tx {
-				broker1Txs = append(broker1Txs, tx)
-			} else {
-				innerShardTxs = append(innerShardTxs, tx)
-			}
 		}
-		// send seqID
+		// send relay txs
 		for sid := uint64(0); sid < cphm.pbftNode.pbftChainConfig.ShardNums; sid++ {
 			if sid == cphm.pbftNode.ShardID {
 				continue
 			}
-			sii := message.SeqIDinfo{
+			relay := message.Relay{
+				Txs:           cphm.pbftNode.CurChain.Txpool.RelayPool[sid],
 				SenderShardID: cphm.pbftNode.ShardID,
 				SenderSeq:     cphm.pbftNode.sequenceID,
 			}
-			sByte, err := json.Marshal(sii)
+			rByte, err := json.Marshal(relay)
 			if err != nil {
 				log.Panic()
 			}
-			msg_send := message.MergeMessage(message.CSeqIDinfo, sByte)
-			networks.TcpDial(msg_send, cphm.pbftNode.ip_nodeTable[sid][0])
-			cphm.pbftNode.pl.Plog.Printf("S%dN%d : sended sequence ids to %d\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, sid)
+			msg_send := message.MergeMessage(message.CRelay, rByte)
+			go networks.TcpDial(msg_send, cphm.pbftNode.ip_nodeTable[sid][0])
+			cphm.pbftNode.pl.Plog.Printf("S%dN%d : sended relay txs to %d\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, sid)
 		}
+		cphm.pbftNode.CurChain.Txpool.ClearRelayPool()
 		// send txs excuted in this block to the listener
 		// add more message to measure more metrics
 		bim := message.BlockInfoMsg{
 			BlockBodyLength: len(block.Body),
-			InnerShardTxs:   innerShardTxs,
-			Broker1Txs:      broker1Txs,
-			Broker2Txs:      broker2Txs,
-			Epoch:           int(cphm.cdm.AccountTransferRound),
+			InnerShardTxs:   txExcuted,
+			Epoch:           cphm.epochID,
+			Relay1Txs:       relay1Txs,
+			Relay2Txs:       relay2Txs,
 			SenderShardID:   cphm.pbftNode.ShardID,
 			ProposeTime:     r.ReqTime,
 			CommitTime:      time.Now(),
@@ -171,36 +176,36 @@ func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinCommit(cmsg *message
 			log.Panic()
 		}
 		msg_send := message.MergeMessage(message.CBlockInfo, bByte)
-		networks.TcpDial(msg_send, cphm.pbftNode.ip_nodeTable[params.SupervisorShard][0])
-		cphm.pbftNode.pl.Plog.Printf("S%dN%d : sended excuted txs\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
+		go networks.TcpDial(msg_send, cphm.pbftNode.ip_nodeTable[params.SupervisorShard][0])
+		cphm.pbftNode.pl.Plog.Printf("S%dN%d : sended excuted %d txs to supervisor\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID, bim.BlockBodyLength)
 		cphm.pbftNode.CurChain.Txpool.GetLocked()
 		metricName := []string{
 			"Block Height",
 			"EpochID of this block",
 			"TxPool Size",
 			"# of all Txs in this block",
-			"# of Broker1 Txs in this block",
-			"# of Broker2 Txs in this block",
+			"# of Relay1 Txs in this block",
+			"# of Relay2 Txs in this block",
 			"TimeStamp - Propose (unixMill)",
 			"TimeStamp - Commit (unixMill)",
 
 			"SUM of confirm latency (ms, All Txs)",
-			"SUM of confirm latency (ms, Broker1 Txs) (Duration: Broker1 proposed -> Broker1 Commit)",
-			"SUM of confirm latency (ms, Broker2 Txs) (Duration: Broker2 proposed -> Broker2 Commit)",
+			"SUM of confirm latency (ms, Relay1 Txs) (Duration: Relay1 proposed -> Relay1 Commit)",
+			"SUM of confirm latency (ms, Relay2 Txs) (Duration: Relay1 proposed -> Relay2 Commit)",
 		}
 		metricVal := []string{
 			strconv.Itoa(int(block.Header.Number)),
 			strconv.Itoa(bim.Epoch),
 			strconv.Itoa(len(cphm.pbftNode.CurChain.Txpool.TxQueue)),
 			strconv.Itoa(len(block.Body)),
-			strconv.Itoa(len(broker1Txs)),
-			strconv.Itoa(len(broker2Txs)),
+			strconv.Itoa(len(relay1Txs)),
+			strconv.Itoa(len(relay2Txs)),
 			strconv.FormatInt(bim.ProposeTime.UnixMilli(), 10),
 			strconv.FormatInt(bim.CommitTime.UnixMilli(), 10),
 
 			strconv.FormatInt(computeTCL(block.Body, bim.CommitTime), 10),
-			strconv.FormatInt(computeTCL(broker1Txs, bim.CommitTime), 10),
-			strconv.FormatInt(computeTCL(broker2Txs, bim.CommitTime), 10),
+			strconv.FormatInt(computeTCL(relay1Txs, bim.CommitTime), 10),
+			strconv.FormatInt(computeTCL(relay2Txs, bim.CommitTime), 10),
 		}
 		cphm.pbftNode.writeCSVline(metricName, metricVal)
 		cphm.pbftNode.CurChain.Txpool.GetUnlocked()
@@ -208,13 +213,13 @@ func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleinCommit(cmsg *message
 	return true
 }
 
-func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleReqestforOldSeq(*message.RequestOldMessage) bool {
+func (cphm *PLouvainPbftInsideExtraHandleMod) HandleReqestforOldSeq(*message.RequestOldMessage) bool {
 	fmt.Println("No operations are performed in Extra handle mod")
 	return true
 }
 
 // the operation for sequential requests
-func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleforSequentialRequest(som *message.SendOldMessage) bool {
+func (cphm *PLouvainPbftInsideExtraHandleMod) HandleforSequentialRequest(som *message.SendOldMessage) bool {
 	if int(som.SeqEndHeight-som.SeqStartHeight+1) != len(som.OldRequest) {
 		cphm.pbftNode.pl.Plog.Printf("S%dN%d : the SendOldMessage message is not enough\n", cphm.pbftNode.ShardID, cphm.pbftNode.NodeID)
 	} else { // add the block into the node pbft blockchain
@@ -234,5 +239,8 @@ func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) HandleforSequentialRequest(s
 	return true
 }
 
-func (cphm *CLPAPbftInsideExtraHandleMod_forBroker) UpdateEpochID(epochID int) {
+func (cphm *PLouvainPbftInsideExtraHandleMod) UpdateEpochID(epochID int) {
+	// if cphm.epochID < epochID {
+	cphm.epochID = epochID
+	//}
 }

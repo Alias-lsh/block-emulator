@@ -29,6 +29,9 @@ type RLPAState struct {
 	// HotAccounts      map[string]bool // 存储热点账户
 	AccountFrequency map[string]int // 存储账户的交易频率
 	HotAccountLock   sync.Mutex     // 锁，用于保护热点账户的更新
+
+	shardPerformance []float32 //分片性能
+	beta             float32   //权重惩罚
 }
 
 func (graph *RLPAState) Hash() []byte {
@@ -196,7 +199,7 @@ func (cs *RLPAState) changeShardRecompute(v Vertex, old int) {
 }
 
 // 设置参数
-func (cs *RLPAState) Init_RLPAState(wp float64, mIter, sn int) {
+func (cs *RLPAState) Init_RLPAState(beta float32, shardPerformance []float32, wp float64, mIter, sn int) {
 	cs.WeightPenalty = wp
 	cs.MaxIterations = mIter
 	cs.ShardNum = sn
@@ -206,9 +209,26 @@ func (cs *RLPAState) Init_RLPAState(wp float64, mIter, sn int) {
 	// cs.HotAccounts = make(map[string]bool)
 	cs.AccountFrequency = make(map[string]int)
 
+	cs.shardPerformance = shardPerformance
+	cs.beta = beta
+
 	// cs.Edges2Shard = make([]int, sn)
 	// cs.CrossShardEdgeNum = 0
 	// cs.MinEdges2Shard = math.MaxInt
+}
+
+// 更新分片性能值
+func (cs *RLPAState) UpdateShardPerformance(newShardPerformance []float32) {
+	cs.shardPerformance = newShardPerformance
+}
+
+// 更新数据
+func (cs *RLPAState) UpdateData(newIptable map[uint64]map[uint64]string, newShardPerformance []float32) {
+	cs.ShardNum = len(newIptable)
+	for shardId, nodeTable := range newIptable {
+		cs.VertexsNumInShard[shardId] = len(nodeTable)
+	}
+	cs.shardPerformance = newShardPerformance
 }
 
 // 更新账户交易频率
@@ -225,7 +245,7 @@ func (cs *RLPAState) IsHotAccount(account string) bool {
 	cs.HotAccountLock.Lock()
 	defer cs.HotAccountLock.Unlock()
 	flag := false
-	if cs.AccountFrequency[account] > 1000 {
+	if cs.AccountFrequency[account] > 100 {
 		flag = true
 	}
 	return flag
@@ -280,7 +300,9 @@ func (cs *RLPAState) getShard_score(v Vertex, uShard int) float64 {
 	// stability := cs.CalculateTransactionVolumeStability(t0, 1200.0)
 	// score = 0.5*float64(shardWeight)/float64(totalWeight)*(1-cs.WeightPenalty*float64(cs.Edges2Shard[uShard])/float64(cs.MinEdges2Shard)) + 0.5*stability
 	// cs.PrintAllEdgeTimes()
+
 	score = float64(shardWeight) / float64(totalWeight) * (1 - cs.WeightPenalty*float64(cs.Edges2Shard[uShard])/float64(cs.MinEdges2Shard))
+
 	// score = 0.5*float64(shardWeight)/float64(totalWeight) + 0.5*stability
 	// score = float64(shardWeight) / float64(totalWeight)
 	return score

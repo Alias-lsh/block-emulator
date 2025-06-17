@@ -7,7 +7,8 @@ import "blockEmulator/message"
 
 type ExtraOpInConsensus interface {
 	// mining / message generation
-	HandleinPropose() (bool, *message.Request)
+	// HandleinPropose() (bool, *message.Request)
+	HandleinPropose() (bool, *message.Request, uint64)
 	// checking
 	HandleinPrePrepare(*message.PrePrepare) bool
 	// nothing necessary
@@ -18,6 +19,8 @@ type ExtraOpInConsensus interface {
 	HandleReqestforOldSeq(*message.RequestOldMessage) bool
 	// do for need
 	HandleforSequentialRequest(*message.SendOldMessage) bool
+
+	UpdateEpochID(int)
 }
 
 // Define operations among some PBFTs.

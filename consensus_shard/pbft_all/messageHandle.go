@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"golang.org/x/exp/rand"
 )
 
 // this func is only invoked by main node
@@ -54,7 +56,8 @@ func (p *PbftConsensusNode) Propose() {
 				p.pl.Plog.Printf("S%dN%d get sequenceLock locked, now trying to propose...\n", p.ShardID, p.NodeID)
 				// propose
 				// implement interface to generate propose
-				_, r := p.ihm.HandleinPropose()
+				_, r, txNumInBlock := p.ihm.HandleinPropose()
+				p.txNumInBlock = txNumInBlock
 
 				digest := getDigest(r)
 				p.requestPool[string(digest)] = r
@@ -64,6 +67,19 @@ func (p *PbftConsensusNode) Propose() {
 					RequestMsg: r,
 					Digest:     digest,
 					SeqID:      p.sequenceID,
+				}
+
+				//根据上个区块哈希和prepare、commit情况进行更新节点行为记录更新
+				if !p.lastBlockIfPartion && !p.lastBlockIfSuccess && p.lastDigest != "" {
+					p.RecordFailBlockNodeAction()
+				}
+				p.lastDigest = string(digest)
+
+				p.lastBlockIfSuccess = false
+				if r.RequestType == message.PartitionReq {
+					p.lastBlockIfPartion = true
+				} else {
+					p.lastBlockIfPartion = false
 				}
 				p.height2Digest[p.sequenceID] = string(digest)
 				// marshal and broadcast
@@ -80,6 +96,68 @@ func (p *PbftConsensusNode) Propose() {
 		case <-p.pStop:
 			p.pl.Plog.Printf("S%dN%d get stopSignal in Propose Routine, now stop...\n", p.ShardID, p.NodeID)
 			return
+		}
+	}
+}
+
+// 区块提交失败了，记录节点贡献交易、投票结果的函数
+func (p *PbftConsensusNode) RecordFailBlockNodeAction() {
+	nodeIfPrepare := p.cntPrepareConfirm[p.lastDigest]
+	nodeIfCommit := p.cntCommitConfirm[p.lastDigest]
+	nodeRecorded := make(map[uint64]bool)
+	//失败就默认主节点错误行为
+	if _, exist := p.nodeFR[uint64(p.view.Load())]; !exist {
+		p.nodeMW[uint64(p.view.Load())] = 1
+	} else {
+		p.nodeMW[uint64(p.view.Load())]++
+	}
+	nodeRecorded[uint64(p.view.Load())] = true
+
+	for Node, ifCommit := range nodeIfCommit {
+		if ifCommit { //认为对提交失败的区块投commit是错误行为
+			if Node.NodeID != uint64(p.view.Load()) {
+				if _, exist := p.nodeFR[Node.NodeID]; !exist {
+					p.nodeFW[Node.NodeID] = 1
+				} else {
+					p.nodeFW[Node.NodeID]++
+				}
+			}
+			nodeRecorded[Node.NodeID] = true
+		}
+	}
+	for Node, ifPrepare := range nodeIfPrepare {
+		if ifPrepare && !nodeRecorded[Node.NodeID] { //认为对提交失败的区块投prepare是错误行为
+			if Node.NodeID != uint64(p.view.Load()) {
+				if _, exist := p.nodeFR[Node.NodeID]; !exist {
+					p.nodeFW[Node.NodeID] = 1
+				} else {
+					p.nodeFW[Node.NodeID]++
+				}
+			}
+			nodeRecorded[Node.NodeID] = true
+		}
+	}
+	//贡献交易计算
+	nodeWrongNum := uint64(len(nodeRecorded)) //有记录证明在区块提交失败时进行了错误行为
+	nodeRightNum := p.node_nums - nodeWrongNum
+	for i := uint64(0); i < p.node_nums; i++ {
+		if nodeRecorded[i] {
+			p.TXi[i] = p.TXi[i] - float32(p.txNumInBlock)/float32(nodeWrongNum)
+		} else {
+			if i == uint64(p.view.Load()) {
+				if _, exist := p.nodeFR[i]; !exist {
+					p.nodeMR[i] = 1
+				} else {
+					p.nodeMR[i]++
+				}
+			} else {
+				if _, exist := p.nodeFR[i]; !exist {
+					p.nodeFR[i] = 1
+				} else {
+					p.nodeFR[i]++
+				}
+			}
+			p.TXi[i] = p.TXi[i] + float32(p.txNumInBlock)/float32(nodeRightNum)
 		}
 	}
 }
@@ -122,6 +200,11 @@ func (p *PbftConsensusNode) handlePrePrepare(content []byte) {
 		flag = p.ihm.HandleinPrePrepare(ppmsg)
 		p.requestPool[string(getDigest(ppmsg.RequestMsg))] = ppmsg.RequestMsg
 		p.height2Digest[ppmsg.SeqID] = string(getDigest(ppmsg.RequestMsg))
+
+		//根据作恶IP进行作恶
+		if p.ifSetMalicious && !p.lastBlockIfPartion {
+			flag = p.setMaliciousAction()
+		}
 	}
 	// if the message is true, broadcast the prepare message
 	if flag {
@@ -142,6 +225,71 @@ func (p *PbftConsensusNode) handlePrePrepare(content []byte) {
 
 		// Pbft stage add 1. It means that this round of pbft goes into the next stage, i.e., Prepare stage.
 		p.pbftStage.Add(1)
+	}
+}
+
+func (p *PbftConsensusNode) setMaliciousAction() bool {
+	flag := true
+	p.pl.Plog.Println("MaliciousIP传入:", p.maliciousIP)
+	myPort, err := params.ExtractPortFromAddress(p.maliciousIP)
+	if err != nil {
+		p.pl.Plog.Println("提取作恶端口号出错:", err)
+	} else {
+		//此处设置怎样端口的节点作恶，目前是最后一个数字是3的节点。
+		initialNodeID := myPort % 10
+		initialShardID := (myPort - 28800 - initialNodeID) / 100
+		if initialShardID%3 == 1 {
+			if initialNodeID%4 == 3 { //p.NodeID != p.view &&
+				//随机生成一个0-prob的数字，如果小于MaliciousProb则作恶，则作恶概率最低为MaliciousProb
+				if params.MaliciousProb == 1.0 {
+					flag = false
+					return flag
+				}
+				prob := 100 - initialShardID*params.InitialShardProb - initialNodeID
+				if float64(prob) < params.MaliciousProb*100 {
+					prob = int(params.MaliciousProb * 100)
+				}
+				randomNumber := rand.Intn(prob)
+				if float64(randomNumber)/100.0 < params.MaliciousProb {
+					flag = false
+				}
+			}
+		} else if initialShardID%3 == 2 {
+			if initialNodeID%4 == 3 {
+				if params.MaliciousProb == 1.0 {
+					flag = false
+					return flag
+				}
+				prob := 100 - initialShardID*params.InitialShardProb - initialNodeID
+				if float64(prob) < params.MaliciousProb*100 {
+					prob = int(params.MaliciousProb * 100)
+				}
+				randomNumber := rand.Intn(prob)
+				if float64(randomNumber)/100.0 < params.MaliciousProb {
+					flag = false
+				}
+			}
+		}
+	}
+	return flag
+}
+
+func (p *PbftConsensusNode) setDelay() {
+	//延迟发送prepare消息
+	if p.ifSetDelay && !p.lastBlockIfPartion {
+		myPort, err := params.ExtractPortFromAddress(p.maliciousIP)
+		if err != nil {
+			p.pl.Plog.Println("提取作恶端口号出错:", err)
+		} else {
+			//此处设置根据作恶IP设置相应延迟表示性能差异。
+			initialNodeID := myPort % 10
+			initialShardID := (myPort - 28800 - initialNodeID) / 100
+			if initialNodeID != 0 {
+				delayTime := time.Duration(initialShardID*params.ShardInitalDelay+initialNodeID*params.NodeInitalDelay) * time.Millisecond
+				time.Sleep(delayTime)
+				p.pl.Plog.Printf("S%dN%d :set delay %d ms\n", p.ShardID, p.NodeID, initialShardID*params.ShardInitalDelay+initialNodeID*params.NodeInitalDelay)
+			}
+		}
 	}
 }
 
@@ -197,6 +345,7 @@ func (p *PbftConsensusNode) handlePrepare(content []byte) {
 				log.Panic()
 			}
 			msg_send := message.MergeMessage(message.CCommit, commitByte)
+			p.setDelay()
 			networks.Broadcast(p.RunningNode.IPaddr, p.getNeighborNodes(), msg_send)
 			networks.TcpDial(msg_send, p.RunningNode.IPaddr)
 			p.isCommitBordcast[string(pmsg.Digest)] = true
@@ -262,13 +411,19 @@ func (p *PbftConsensusNode) handleCommit(content []byte) {
 
 			p.pl.Plog.Printf("S%dN%d : is now requesting message (seq %d to %d) ... \n", p.ShardID, p.NodeID, orequest.SeqStartHeight, orequest.SeqEndHeight)
 			msg_send := message.MergeMessage(message.CRequestOldrequest, bromyte)
+			p.setDelay()
 			networks.TcpDial(msg_send, orequest.ServerNode.IPaddr)
 		} else {
+			if !p.lastBlockIfPartion {
+				p.RecordSuccessBlockNodeAction(p.cntCommitConfirm[string(cmsg.Digest)])
+			}
 			// implement interface
 			p.ihm.HandleinCommit(cmsg)
 			p.isReply[string(cmsg.Digest)] = true
 			p.pl.Plog.Printf("S%dN%d: this round of pbft %d is end \n", p.ShardID, p.NodeID, p.sequenceID)
 			p.sequenceID += 1
+
+			p.lastBlockIfSuccess = true
 		}
 
 		p.pbftStage.Store(1)
@@ -276,10 +431,89 @@ func (p *PbftConsensusNode) handleCommit(content []byte) {
 
 		// if this node is a main node, then unlock the sequencelock
 		if p.NodeID == uint64(p.view.Load()) {
+			if !p.lastBlockIfPartion {
+				p.SendNodeActionToSupervisor()
+				p.pl.Plog.Printf("S%dN%d in pbft round %d sended nodeAction in my shard to supervisor ...\n", p.ShardID, p.NodeID, p.sequenceID)
+			}
 			p.sequenceLock.Unlock()
 			p.pl.Plog.Printf("S%dN%d get sequenceLock unlocked...\n", p.ShardID, p.NodeID)
 		}
 	}
+}
+
+// 区块提交成功了，记录节点贡献交易、投票结果的函数
+func (p *PbftConsensusNode) RecordSuccessBlockNodeAction(nodeIfCommit map[*shard.Node]bool) {
+	neighborIfCommit := make(map[uint64]bool)
+	for Node, ifCommit := range nodeIfCommit {
+		if ifCommit { //hereeeeeeee
+			if Node.NodeID != uint64(p.view.Load()) {
+				if _, exist := p.nodeFR[Node.NodeID]; !exist {
+					p.nodeFR[Node.NodeID] = 1
+				} else {
+					p.nodeFR[Node.NodeID]++
+				}
+			}
+			neighborIfCommit[Node.NodeID] = true
+		}
+	}
+	neighborIfCommit[uint64(p.view.Load())] = true
+	if _, exist := p.nodeFR[uint64(p.view.Load())]; !exist {
+		p.nodeMR[uint64(p.view.Load())] = 1
+	} else {
+		p.nodeMR[uint64(p.view.Load())]++
+	}
+
+	nodeRightNum := uint64(len(neighborIfCommit))
+	//nodeWrongNum := p.node_nums - nodeRightNum
+	for i := uint64(0); i < p.node_nums; i++ {
+		if neighborIfCommit[i] {
+			p.TXi[i] = p.TXi[i] + float32(p.txNumInBlock)/float32(nodeRightNum)
+		} else {
+			if i == uint64(p.view.Load()) {
+				if _, exist := p.nodeFR[i]; !exist {
+					p.nodeMW[i] = 1
+				} else {
+					p.nodeMW[i]++
+				}
+			} else {
+				if _, exist := p.nodeFR[i]; !exist {
+					p.nodeFW[i] = 1
+				} else {
+					p.nodeFW[i]++
+				}
+			}
+			//此处不对未提交的节点进行处罚
+		}
+	}
+	//对节点本epoch的安全贡献值进行更新
+	for i := uint64(0); i < p.node_nums; i++ {
+		numerator := params.Mu*(params.Lambda*float32(p.nodeMR[i])+float32(p.nodeFR[i])) - params.Theta*(params.Lambda*float32(p.nodeMW[i])+float32(p.nodeFW[i]))
+		denominator := params.Lambda*(float32(p.nodeMR[i]+p.nodeMW[i])) + float32(p.nodeFR[i]+p.nodeFW[i])
+		p.safeVauleInEpoch[i] = numerator / denominator
+	}
+}
+
+// 发送节点最新的安全贡献值和累计贡献交易数给监督节点
+func (p *PbftConsensusNode) SendNodeActionToSupervisor() {
+	nodeAction := new(message.NodeAction)
+	nodeAction.ShardIndex = p.ShardID
+	//nodeAction.EpochIndex = p.CurChain.CurrentBlock.Header.Epoch
+	nodeAction.SequenceIDInThisShard = p.sequenceID
+	if nodeAction.SafeVauleInEpoch == nil {
+		nodeAction.SafeVauleInEpoch = make(map[uint64]float32)
+	}
+	if nodeAction.TxinEpoch == nil {
+		nodeAction.TxinEpoch = make(map[uint64]float32)
+	}
+	nodeAction.SafeVauleInEpoch = p.safeVauleInEpoch
+	nodeAction.TxinEpoch = p.TXi
+	nodeActionByte, err := json.Marshal(nodeAction)
+	if err != nil {
+		log.Panic()
+	}
+	msg_send := message.MergeMessage(message.CNodeAction, nodeActionByte)
+	p.setDelay()
+	go networks.TcpDial(msg_send, p.ip_nodeTable[params.SupervisorShard][0])
 }
 
 // this func is only invoked by the main node,
@@ -328,6 +562,7 @@ func (p *PbftConsensusNode) handleRequestOldSeq(content []byte) {
 		log.Panic()
 	}
 	msg_send := message.MergeMessage(message.CSendOldrequest, sbByte)
+	p.setDelay()
 	networks.TcpDial(msg_send, rom.SenderNode.IPaddr)
 	p.pl.Plog.Printf("S%dN%d : send blocks\n", p.ShardID, p.NodeID)
 }
@@ -372,6 +607,7 @@ func (p *PbftConsensusNode) handleSendOldSeq(content []byte) {
 				}
 				// broadcast
 				msg_send := message.MergeMessage(message.CPrepare, prepareByte)
+				p.setDelay()
 				networks.Broadcast(p.RunningNode.IPaddr, p.getNeighborNodes(), msg_send)
 				p.pl.Plog.Printf("S%dN%d : has broadcast the prepare message \n", p.ShardID, p.NodeID)
 			}
@@ -379,4 +615,30 @@ func (p *PbftConsensusNode) handleSendOldSeq(content []byte) {
 	}
 
 	p.askForLock.Unlock()
+}
+
+func (p *PbftConsensusNode) handleNodeMigration(content []byte) {
+	// 解析节点迁移消息
+	migrateMsg := new(message.NodeMigrationMsg)
+	err := json.Unmarshal(content, migrateMsg)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// 先从所有分片删除该节点
+	for _, nodeMap := range p.ip_nodeTable {
+		delete(nodeMap, migrateMsg.NodeID)
+	}
+	// 加入新分片
+	if _, ok := p.ip_nodeTable[migrateMsg.NewShard]; !ok {
+		p.ip_nodeTable[migrateMsg.NewShard] = make(map[uint64]string)
+	}
+	p.ip_nodeTable[migrateMsg.NewShard][migrateMsg.NodeID] = migrateMsg.NewIP
+
+	// 如果是本节点，还要更新自身信息
+	if migrateMsg.NodeID == p.NodeID {
+		p.RunningNode.IPaddr = migrateMsg.NewIP
+		p.RunningNode.ShardID = migrateMsg.NewShard
+		p.pl.Plog.Printf("Node %d migrated to new IP %s in shard %d\n", p.NodeID, p.RunningNode.IPaddr, p.RunningNode.ShardID)
+	}
 }

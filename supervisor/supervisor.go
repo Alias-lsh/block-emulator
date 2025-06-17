@@ -54,15 +54,26 @@ func (d *Supervisor) NewSupervisor(ip string, pcc *params.ChainConfig, committee
 
 	d.Ss = signal.NewStopSignal(3 * int(pcc.ShardNums))
 
+	//初始化分片性能值为1
+	shardPerformance := make([]float32, pcc.ShardNums)
+	for i := uint64(0); i < pcc.ShardNums; i++ {
+		shardPerformance[i] = 1.0
+	}
+
+	//打印ifNodeAlloc
+	d.sl.Slog.Printf("Supervisor: params.IfNodeAlloc is %v\n", params.IfNodeAlloc)
+
 	switch committeeMethod {
 	case "CLPA_Broker":
 		d.comMod = committee.NewCLPACommitteeMod_Broker(d.Ip_nodeTable, d.Ss, d.sl, params.DatasetFile, params.TotalDataSize, params.TxBatchSize, params.ReconfigTimeGap)
 	case "CLPA":
 		d.comMod = committee.NewCLPACommitteeModule(d.Ip_nodeTable, d.Ss, d.sl, params.DatasetFile, params.TotalDataSize, params.TxBatchSize, params.ReconfigTimeGap)
 	case "RLPA":
-		d.comMod = committee.NewRLPACommitteeModule(d.Ip_nodeTable, d.Ss, d.sl, params.DatasetFile, params.TotalDataSize, params.TxBatchSize, params.ReconfigTimeGap)
+		d.comMod = committee.NewRLPACommitteeModule(d.Ip_nodeTable, d.Ss, d.sl, params.DatasetFile, params.TotalDataSize, params.TxBatchSize, params.ReconfigTimeGap, shardPerformance)
 	case "Broker":
 		d.comMod = committee.NewBrokerCommitteeMod(d.Ip_nodeTable, d.Ss, d.sl, params.DatasetFile, params.TotalDataSize, params.TxBatchSize)
+	case "P-Louvain":
+		d.comMod = committee.NewPLouvainCommitteeModule(d.Ip_nodeTable, d.Ss, d.sl, params.DatasetFile, params.TotalDataSize, params.TxBatchSize, shardPerformance)
 	default:
 		d.comMod = committee.NewRelayCommitteeModule(d.Ip_nodeTable, d.Ss, d.sl, params.DatasetFile, params.TotalDataSize, params.TxBatchSize)
 	}
@@ -88,6 +99,14 @@ func (d *Supervisor) NewSupervisor(ip string, pcc *params.ChainConfig, committee
 			d.testMeasureMods = append(d.testMeasureMods, measure.NewTestTxNumCount_Broker())
 		case "Tx_Details":
 			d.testMeasureMods = append(d.testMeasureMods, measure.NewTestTxDetail())
+		case "TPS_PLouvain": //目前用的是relay跨分片处理机制，所以还是用relay的指标
+			d.testMeasureMods = append(d.testMeasureMods, measure.NewTestModule_avgTPS_Relay())
+		case "TCL_PLouvain":
+			d.testMeasureMods = append(d.testMeasureMods, measure.NewTestModule_TCL_Relay())
+		case "CrossTxRate_PLouvain":
+			d.testMeasureMods = append(d.testMeasureMods, measure.NewTestCrossTxRate_Relay())
+		case "TxNumberCount_PLouvain":
+			d.testMeasureMods = append(d.testMeasureMods, measure.NewTestTxNumCount_Relay())
 		default:
 		}
 	}
@@ -108,6 +127,11 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 		d.Ss.StopGap_Reset()
 	}
 
+	if d.Ss.EpochEnough() {
+		d.sl.Slog.Printf("Supervisor: Epoch is enough, stop handling block info\n")
+		return
+	}
+
 	d.comMod.HandleBlockInfo(bim)
 
 	// measure update
@@ -122,7 +146,7 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 func (d *Supervisor) SupervisorTxHandling() {
 	d.comMod.MsgSendingControl()
 	// TxHandling is end
-	for !d.Ss.GapEnough() { // wait all txs to be handled
+	for !d.Ss.GapEnough() && !d.Ss.EpochEnough() { // wait all txs to be handled
 		time.Sleep(time.Second)
 	}
 	// send stop message
@@ -144,16 +168,24 @@ func (d *Supervisor) SupervisorTxHandling() {
 // handle message. only one message to be handled now
 func (d *Supervisor) handleMessage(msg []byte) {
 	msgType, content := message.SplitMessage(msg)
+	d.sl.Slog.Printf("Supervisor: received message type: %v\n", msgType)
+	if d.Ss.EpochEnough() {
+		d.sl.Slog.Printf("Supervisor: Epoch is enough, stop handleMessage\n")
+		return
+	}
 	switch msgType {
 	case message.CBlockInfo:
 		d.handleBlockInfos(content)
 		// add codes for more functionality
+	case message.CNodeAction:
+		d.comMod.HandleNodeAction(content)
 	default:
 		d.comMod.HandleOtherMessage(msg)
 		for _, mm := range d.testMeasureMods {
 			mm.HandleExtraMessage(msg)
 		}
 	}
+	d.sl.Slog.Println("Supervisor: handleMessage() ends")
 }
 
 func (d *Supervisor) handleClientRequest(con net.Conn) {
@@ -161,6 +193,10 @@ func (d *Supervisor) handleClientRequest(con net.Conn) {
 	clientReader := bufio.NewReader(con)
 	for {
 		clientRequest, err := clientReader.ReadBytes('\n')
+		if d.Ss.EpochEnough() {
+			d.sl.Slog.Println("Supervisor: Epoch is enough, stop handling client request")
+			return
+		}
 		switch err {
 		case nil:
 			d.tcpLock.Lock()
@@ -194,6 +230,7 @@ func (d *Supervisor) TcpListen() {
 // close Supervisor, and record the data in .csv file
 func (d *Supervisor) CloseSupervisor() {
 	d.sl.Slog.Println("Closing...")
+	d.comMod.OutputNodeValue()
 	for _, measureMod := range d.testMeasureMods {
 		d.sl.Slog.Println(measureMod.OutputMetricName())
 		d.sl.Slog.Println(measureMod.OutputRecord())

@@ -16,10 +16,12 @@ import (
 type CLPAPbftInsideExtraHandleMod struct {
 	cdm      *dataSupport.Data_supportCLPA
 	pbftNode *PbftConsensusNode
+
+	epochID int
 }
 
 // propose request with different types
-func (cphm *CLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Request) {
+func (cphm *CLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Request, uint64) {
 	if cphm.cdm.PartitionOn {
 		cphm.sendPartitionReady()
 		for !cphm.getPartitionReady() {
@@ -31,7 +33,9 @@ func (cphm *CLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Requ
 		for !cphm.getCollectOver() {
 			time.Sleep(time.Second)
 		}
-		return cphm.proposePartition()
+		// return cphm.proposePartition()
+		result1, result2 := cphm.proposePartition()
+		return result1, result2, uint64(0)
 	}
 
 	// ELSE: propose a block
@@ -41,7 +45,10 @@ func (cphm *CLPAPbftInsideExtraHandleMod) HandleinPropose() (bool, *message.Requ
 		ReqTime:     time.Now(),
 	}
 	r.Msg.Content = block.Encode()
-	return true, r
+	//记录区块内交易数
+	txNumInBlock := uint64(len(block.Body))
+	return true, r, txNumInBlock
+	// return true, r
 
 }
 
@@ -209,4 +216,7 @@ func (cphm *CLPAPbftInsideExtraHandleMod) HandleforSequentialRequest(som *messag
 		cphm.pbftNode.CurChain.PrintBlockChain()
 	}
 	return true
+}
+func (cphm *CLPAPbftInsideExtraHandleMod) UpdateEpochID(epochID int) {
+	// cphm.epochID = epochID
 }

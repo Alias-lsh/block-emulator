@@ -15,7 +15,7 @@ import (
 func TestRlpa(t *testing.T) {
 	// 初始化 RLPAState
 	k := new(RLPAState)
-	k.Init_RLPAState(0.5, 100, 4) // 权重惩罚 0.5，最大迭代次数 100，分片数 4
+	// k.Init_RLPAState(0.5, 100, 4) // 权重惩罚 0.5，最大迭代次数 100，分片数 4
 	hotAccountThreshold := 1000
 
 	// 打开交易数据文件

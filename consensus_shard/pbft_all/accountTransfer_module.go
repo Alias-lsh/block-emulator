@@ -353,6 +353,9 @@ func (cphm *CLPAPbftInsideExtraHandleMod) accountTransfer_do(atm *message.Accoun
 		cphm.cdm.ModifiedMap = append(cphm.cdm.ModifiedMap, atm.ModifiedMap)
 	}
 	cphm.cdm.AccountTransferRound = atm.ATid
+	// if !params.IfNodeAlloc {
+	// 	cphm.epochID++
+	// }
 	cphm.cdm.AccountStateTx = make(map[uint64]*message.AccountStateAndTx)
 	cphm.cdm.ReceivedNewAccountState = make(map[string]*core.AccountState)
 	cphm.cdm.ReceivedNewTx = make([]*core.Transaction, 0)
@@ -387,6 +390,7 @@ func (cphm *RLPAPbftInsideExtraHandleMod) accountTransfer_do(atm *message.Accoun
 		cphm.cdm.ModifiedMap = append(cphm.cdm.ModifiedMap, atm.ModifiedMap)
 	}
 	cphm.cdm.AccountTransferRound = atm.ATid
+	cphm.epochID = cphm.epochID + 1
 	cphm.cdm.AccountStateTx = make(map[uint64]*message.AccountStateAndTx)
 	cphm.cdm.ReceivedNewAccountState = make(map[string]*core.AccountState)
 	cphm.cdm.ReceivedNewTx = make([]*core.Transaction, 0)

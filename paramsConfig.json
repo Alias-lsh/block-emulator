@@ -1,9 +1,9 @@
 {
-  "ConsensusMethod": 1,
+  "ConsensusMethod": 5,
   
   "PbftViewChangeTimeOut":200000,
 
-  "ExpDataRootDir": "TestCLPARunDuration3",
+  "ExpDataRootDir": "FormalTestBug&30KTestContribProcessTime",
 
   "Block_Interval": 5000,
 
@@ -13,12 +13,12 @@
 
   "InjectSpeed": 2000,
   "TotalDataSize": 300000,
-  "TxBatchSize": 30000,
+  "TxBatchSize": 1600,
 
   "BrokerNum": 10,
   "RelayWithMerkleProof": 0,
   
-  "DatasetFile": "./selectedTxs_300K.csv",
+  "DatasetFile": "./2000000to2999999_BlockTransaction.csv",
   "ReconfigTimeGap": 50,
 
   "Delay": -1,

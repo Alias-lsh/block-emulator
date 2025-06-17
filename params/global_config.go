@@ -26,9 +26,10 @@ var (
 	BlocksizeInBytes    = 20000 // The maximum size (in bytes) of block body
 	UseBlocksizeInBytes = 0     // Use blocksizeInBytes as the blocksize measurement if '1'.
 
-	InjectSpeed   = 2000   // The speed of transaction injection
-	TotalDataSize = 160000 // The total number of txs to be injected
-	TxBatchSize   = 16000  // The supervisor read a batch of txs then send them. The size of a batch is 'TxBatchSize'
+	InjectSpeed        = 2000   // The speed of transaction injection
+	TotalDataSize      = 160000 // The total number of txs to be injected
+	StopEpochThreshold = 8
+	TxBatchSize        = 16000 // The supervisor read a batch of txs then send them. The size of a batch is 'TxBatchSize'
 
 	BrokerNum            = 10 // The # of Broker accounts used in Broker / CLPA_Broker.
 	RelayWithMerkleProof = 0  // When using a consensus about "Relay", nodes will send Tx Relay with proof if "RelayWithMerkleProof" = 1
@@ -38,10 +39,41 @@ var (
 	LogWrite_path      = ExpDataRootDir + "/log"       // Log output path
 	DatabaseWrite_path = ExpDataRootDir + "/database/" // database write path
 
-	SupervisorAddr = "127.0.0.1:18800"        // Supervisor ip address
-	DatasetFile    = `./selectedTxs_300K.csv` // The raw BlockTransaction data path
+	SupervisorAddr = "127.0.0.1:18800"                         // Supervisor ip address
+	DatasetFile    = `./2000000to2999999_BlockTransaction.csv` // The raw BlockTransaction data path
 
 	ReconfigTimeGap = 50 // The time gap between epochs. This variable is only used in CLPA / CLPA_Broker now.
+
+	NodeAllocFreq = 50 //节点分配频率,单位为秒
+
+	//PLouvain nodeAlloc新增参数
+	IfSetMalicious   = true //是否可能作恶
+	MaliciousProb    = 1.0  //作恶概率
+	InitialShardProb = 8
+	IfSetDelay       = true //是否可能延迟
+	ShardInitalDelay = 300
+	NodeInitalDelay  = 10
+	RLPAFreqEpoch    = 4 //PLouvain算法执行频率,单位为epoch
+
+	IfNodeAlloc   = true                                //是否进行节点分配
+	RLPAFrequency = (RLPAFreqEpoch - 1) * NodeAllocFreq //有节点分配时这样计算，因为程序里加上NodeAllocFreq-10的延迟保证在epoch末尾
+	// IfNodeAlloc       = false
+	// PlouvainFrequency = PlouvainFreqEpoch * NodeAllocFreq //没有节点分配时这样计算，为PlouvainFreqEpoch个epoch一次
+	PlouvainFreqEpoch = 2                                       //PLouvain算法执行频率,单位为epoch
+	PlouvainFrequency = (PlouvainFreqEpoch - 1) * NodeAllocFreq //有节点分配时这样计算，因为程序里加上NodeAllocFreq-10的延迟保证在epoch末尾
+	// PlouvainFrequency = 80
+
+	Mu                             = float32(0.9) //奖励系数
+	Theta                          = float32(1.5) //惩罚系数
+	Lambda                         = float32(2)   //主节点相对从节点的奖罚权重
+	Alpha                          = float32(0.7) //旧贡献值的保留系数
+	Beta                           = float32(2.0) //跨分片交易相对于内部交易的处理时间
+	SecurityVarianceThreshold      = 0.007        //安全性方差阈值
+	ShardTimeVarianceThreshold     = 0.02         //分片时间方差阈值
+	MaxSecuritySwapIteration       = 20           //最大安全性交换次数
+	MaxTimeSwapIteration           = 40           //最大时间交换次数40
+	SecurityIncreaseRateThereshold = 50.0         //安全性增长率阈值
+	SecurityVariencsUpperBound     = 0.05
 )
 
 // network layer
