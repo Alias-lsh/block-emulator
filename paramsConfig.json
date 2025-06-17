@@ -3,7 +3,7 @@
   
   "PbftViewChangeTimeOut":200000,
 
-  "ExpDataRootDir": "FormalTestBug&30KTestContribProcessTime",
+  "ExpDataRootDir": "Test16Shards",
 
   "Block_Interval": 5000,
 
@@ -12,7 +12,7 @@
   "UseBlocksizeInBytes": 0,
 
   "InjectSpeed": 2000,
-  "TotalDataSize": 300000,
+  "TotalDataSize": 1000000,
   "TxBatchSize": 1600,
 
   "BrokerNum": 10,
