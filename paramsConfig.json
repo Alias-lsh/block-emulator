@@ -1,21 +1,21 @@
 {
-  "ConsensusMethod": 5,
+  "ConsensusMethod": 4,
   
   "PbftViewChangeTimeOut":200000,
 
-  "ExpDataRootDir": "Test16Shards",
+  "ExpDataRootDir": "TestRLPAShardLoad",
 
   "Block_Interval": 5000,
 
-  "BlockSize": 5000,
-  "BlocksizeInBytes": 500000,
+  "BlockSize": 2000,
+  "BlocksizeInBytes": 200000,
   "UseBlocksizeInBytes": 0,
 
-  "InjectSpeed": 2000,
-  "TotalDataSize": 1000000,
-  "TxBatchSize": 1600,
+  "InjectSpeed": 20000,
+  "TotalDataSize": 500000,
+  "TxBatchSize": 40000,
 
-  "BrokerNum": 10,
+  "BrokerNum": 5,
   "RelayWithMerkleProof": 0,
   
   "DatasetFile": "./2000000to2999999_BlockTransaction.csv",

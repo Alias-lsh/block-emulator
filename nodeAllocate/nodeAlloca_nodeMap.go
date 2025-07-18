@@ -97,6 +97,13 @@ func (na *RLPANodeAllocate) RLPANodeAllocation(epochId int) (map[uint64]map[uint
 
 	//使用 na.sl.Slog中输出shards
 	na.sl.Slog.Printf("Before allocation: shards: %v\n", na.shards)
+	na.sl.Slog.Println("Before Shard nodes capacity")
+	for i, shard := range na.shards {
+		for _, node := range shard.Nodes {
+			nodeCapacity := node.PerformanceNorm*0.6 + node.SecurityNorm*0.4
+			na.sl.Slog.Printf("Shard %d, Node %d capacity: %.2f\n", i, node.ID, nodeCapacity)
+		}
+	}
 	//参与本轮的节点
 	EpochNodes := getEpochNodes(nodes, na.shards)
 	na.numEpochNodes = len(EpochNodes)
@@ -117,6 +124,13 @@ func (na *RLPANodeAllocate) RLPANodeAllocation(epochId int) (map[uint64]map[uint
 	na.sl.Slog.Printf("After allocation, shards: %v\n", na.shards)
 	for i, shard := range na.shards {
 		na.sl.Slog.Printf("Shard %d: Security: %.2f, ShardTime: %.2f, Load: %.2f, Nodes: %v\n", i, shard.Security, shard.ShardTime, shard.Load, shard.Nodes)
+	}
+	na.sl.Slog.Println("Shard nodes capacity")
+	for i, shard := range na.shards {
+		for _, node := range shard.Nodes {
+			nodeCapacity := node.PerformanceNorm*0.6 + node.SecurityNorm*0.4
+			na.sl.Slog.Printf("Shard %d, Node %d capacity: %.2f\n", i, node.ID, nodeCapacity)
+		}
 	}
 	// 清空并重新初始化NodeSecurityValue和NodePerformanceValue映射
 	na.NodeSafeValue = make(map[uint64]map[uint64]float32)
@@ -474,6 +488,8 @@ func (na *RLPANodeAllocate) SwapNode(nodeID1, shardID1, nodeID2, shardID2 uint64
 	}
 	// 只交换IP
 	na.shards[srcIdx].Nodes[idx1].IP, na.shards[dstIdx].Nodes[idx2].IP = na.shards[dstIdx].Nodes[idx2].IP, na.shards[srcIdx].Nodes[idx1].IP
+	na.shards[srcIdx].Nodes[idx1].PerformanceNorm, na.shards[dstIdx].Nodes[idx2].PerformanceNorm = na.shards[dstIdx].Nodes[idx2].PerformanceNorm, na.shards[srcIdx].Nodes[idx1].PerformanceNorm
+	na.shards[srcIdx].Nodes[idx1].SecurityNorm, na.shards[dstIdx].Nodes[idx2].SecurityNorm = na.shards[dstIdx].Nodes[idx2].SecurityNorm, na.shards[srcIdx].Nodes[idx1].SecurityNorm
 	return nil
 }
 func (na *RLPANodeAllocate) createNodes() []Node {

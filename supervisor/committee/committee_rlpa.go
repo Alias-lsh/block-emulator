@@ -311,7 +311,8 @@ func (ccm *RLPACommitteeModule) MsgSendingControl() {
 	needAccountAlloc := false
 	stopepoch := 0
 	rlpaCnt := 0
-	flag := true
+	// flag := true
+
 	// NodeFlag := true
 	// clpaCnt := 0
 	for {
@@ -422,24 +423,25 @@ func (ccm *RLPACommitteeModule) MsgSendingControl() {
 			}
 		}
 
-		if params.ShardNum > 1 && !ccm.rlpaLastRunningTime.IsZero() && time.Since(ccm.rlpaLastRunningTime) >= time.Duration(0.5*float64(ccm.rlpaFreq))*time.Second && time.Since(ccm.rlpaLastRunningTime) < time.Duration(ccm.rlpaFreq)*time.Second && flag {
-			ccm.rlpaLock.Lock()
-			rlpaCnt++
-			mmap, _ := ccm.rlpaGraph.RLPA_Partition()
+		// if params.ShardNum > 1 && !ccm.rlpaLastRunningTime.IsZero() && time.Since(ccm.rlpaLastRunningTime) >= time.Duration(0.5*float64(ccm.rlpaFreq))*time.Second && time.Since(ccm.rlpaLastRunningTime) < time.Duration(ccm.rlpaFreq)*time.Second && flag {
+		// 	ccm.rlpaLock.Lock()
+		// 	rlpaCnt++
+		// 	mmap, _ := ccm.rlpaGraph.RLPA_Partition()
 
-			ccm.rlpaMapSend(mmap)
-			for key, val := range mmap {
-				ccm.modifiedMap[key] = val
-			}
-			ccm.rlpaReset()
-			ccm.rlpaLock.Unlock()
-			flag = false
-			ccm.epochId++
-			ccm.sl.Slog.Println("Run RLPA Duration ", ccm.epochId)
-			if ccm.nowDataNum == ccm.dataTotalNum {
-				break
-			}
-		}
+		// 	ccm.rlpaMapSend(mmap)
+		// 	for key, val := range mmap {
+		// 		ccm.modifiedMap[key] = val
+		// 	}
+		// 	ccm.rlpaReset()
+		// 	ccm.rlpaLock.Unlock()
+		// 	flag = false
+		// 	ccm.epochId++
+		// 	ccm.sl.Slog.Println("Run RLPA Duration ", ccm.epochId)
+		// 	if ccm.nowDataNum == ccm.dataTotalNum {
+		// 		break
+		// 	}
+		// }
+
 		if params.ShardNum > 1 && !ccm.rlpaLastRunningTime.IsZero() && time.Since(ccm.rlpaLastRunningTime) >= time.Duration(ccm.rlpaFreq)*time.Second || needAccountAlloc {
 			if needAccountAlloc || time.Since(ccm.nodeAllocLastRunTime) >= time.Duration(ccm.nodeAllocFreq-10)*time.Second {
 				if ccm.Ss.EpochEnough() {
@@ -485,7 +487,7 @@ func (ccm *RLPACommitteeModule) MsgSendingControl() {
 				ccm.rlpaLastRunningTime = time.Now()
 				ifRLPAed[ccm.epochId] = true
 				ccm.sl.Slog.Printf("Supervisor: epoch %d allocated accounts successfully.\n", ccm.epochId)
-				flag = true
+				// flag = true
 				if !params.IfNodeAlloc {
 					ccm.epochId++
 					ccm.nodeAllocLastRunTime = time.Now()
@@ -638,7 +640,7 @@ func (ccm *RLPACommitteeModule) MsgSendingControl() {
 
 				ccm.rlpaLastRunningTime = time.Now()
 				ifRLPAed[ccm.epochId] = true
-				flag = true
+				// flag = true
 				ccm.sl.Slog.Printf("Supervisor: epoch %d allocated accounts successfully.\n", ccm.epochId)
 				if !params.IfNodeAlloc {
 					ccm.epochId++
@@ -769,6 +771,7 @@ func (ccm *RLPACommitteeModule) OutputNodeValue() {
 		}
 		ccm.sl.Slog.Printf("%v\n", tem)
 	}
+	ccm.sl.Slog.Printf("Supervisor: node safe value norm is following ... \n")
 	for i := 0; i < len(ccm.nodeValueHistory.nodeSafeVaule); i++ {
 		ccm.sl.Slog.Printf("Shard %d :", i)
 		//声明临时数组将节点安全贡献值存储，然后输出数组
@@ -789,12 +792,33 @@ func (ccm *RLPACommitteeModule) OutputNodeValue() {
 		}
 		ccm.sl.Slog.Printf("%v\n", tem)
 	}
+	ccm.sl.Slog.Printf("Supervisor: node performance value norm is  following ... \n")
 	for i := 0; i < len(ccm.nodeValueHistory.nodePerformanceVaule); i++ {
 		ccm.sl.Slog.Printf("Shard %d :", i)
 		//tem := make([]float32, len(plcm.nodeValueHistory.nodePerformanceVaule[uint64(i)]))
 		var tem []interface{}
 		for j := 0; j < len(ccm.nodeValueHistory.nodePerformanceVauleNorm[uint64(i)]); j++ {
 			tem = append(tem, ccm.nodeValueHistory.nodePerformanceVauleNorm[uint64(i)][uint64(j)])
+		}
+		ccm.sl.Slog.Printf("%v\n", tem)
+	}
+	ccm.sl.Slog.Printf("Supervisor: ShardLoad is  following ... \n")
+	for shardID, loadHistory := range ccm.shardLoadHistory {
+		ccm.sl.Slog.Printf("Shard %d :", shardID)
+		// tem := make([]float64, len(loadHistory))
+		var tem []interface{}
+		for j := 0; j < len(loadHistory); j++ {
+			tem = append(tem, loadHistory[j])
+		}
+		ccm.sl.Slog.Printf("%v\n", tem)
+	}
+	ccm.sl.Slog.Printf("Supervisor: node value is  following ... \n")
+	for i := 0; i < len(ccm.nodeValueHistory.nodePerformanceVaule); i++ {
+		ccm.sl.Slog.Printf("Shard %d :", i)
+		//tem := make([]float32, len(plcm.nodeValueHistory.nodePerformanceVaule[uint64(i)]))
+		var tem []interface{}
+		for j := 0; j < len(ccm.nodeValueHistory.nodePerformanceVauleNorm[uint64(i)]); j++ {
+			tem = append(tem, ccm.nodeValueHistory.nodePerformanceVauleNorm[uint64(i)][uint64(j)]*0.6+ccm.nodeValueHistory.nodeSafeVauleNorm[uint64(i)][uint64(j)]*0.4)
 		}
 		ccm.sl.Slog.Printf("%v\n", tem)
 	}

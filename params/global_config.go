@@ -47,10 +47,10 @@ var (
 	NodeAllocFreq = 50 //节点分配频率,单位为秒
 
 	//PLouvain nodeAlloc新增参数
-	IfSetMalicious   = true //是否可能作恶
-	MaliciousProb    = 1.0  //作恶概率
+	IfSetMalicious   = false //是否可能作恶
+	MaliciousProb    = 1.0   //作恶概率
 	InitialShardProb = 8
-	IfSetDelay       = true //是否可能延迟
+	IfSetDelay       = false //是否可能延迟
 	ShardInitalDelay = 300
 	NodeInitalDelay  = 10
 	RLPAFreqEpoch    = 4 //PLouvain算法执行频率,单位为epoch
@@ -59,7 +59,7 @@ var (
 	RLPAFrequency = (RLPAFreqEpoch - 1) * NodeAllocFreq //有节点分配时这样计算，因为程序里加上NodeAllocFreq-10的延迟保证在epoch末尾
 	// IfNodeAlloc       = false
 	// PlouvainFrequency = PlouvainFreqEpoch * NodeAllocFreq //没有节点分配时这样计算，为PlouvainFreqEpoch个epoch一次
-	PlouvainFreqEpoch = 2                                       //PLouvain算法执行频率,单位为epoch
+	PlouvainFreqEpoch = 4                                       //PLouvain算法执行频率,单位为epoch
 	PlouvainFrequency = (PlouvainFreqEpoch - 1) * NodeAllocFreq //有节点分配时这样计算，因为程序里加上NodeAllocFreq-10的延迟保证在epoch末尾
 	// PlouvainFrequency = 80
 
