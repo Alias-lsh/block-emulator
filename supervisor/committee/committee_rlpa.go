@@ -56,6 +56,8 @@ type RLPACommitteeModule struct {
 	nodeAllocFreq        int
 	shardLoadHistory     map[uint64][]float64
 
+	// epochAccountPairCount map[string]map[string]int // 新增：每个epoch的账户对统计
+
 	epochId int
 }
 
@@ -162,8 +164,69 @@ func (ccm *RLPACommitteeModule) txSending(txlist []*core.Transaction) {
 		tx := txlist[idx]
 		sendersid := ccm.fetchModifiedMap(tx.Sender)
 		sendToShard[sendersid] = append(sendToShard[sendersid], tx)
+		// fromAddr := strings.ToLower(strings.TrimSpace(tx.Sender))
+		// toAddr := strings.ToLower(strings.TrimSpace(tx.Recipient))
+		// if ccm.epochAccountPairCount[fromAddr] == nil {
+		// 	ccm.epochAccountPairCount[fromAddr] = make(map[string]int)
+		// }
+		// ccm.epochAccountPairCount[fromAddr][toAddr]++
 	}
 }
+
+// func (ccm *RLPACommitteeModule) OutputEpochAccountPairCount(epochId int) {
+// 	filename := fmt.Sprintf("account_pair_epoch_%d.csv", epochId)
+// 	file, err := os.Create(filename)
+// 	if err != nil {
+// 		ccm.sl.Slog.Printf("无法创建文件: %v", err)
+// 		return
+// 	}
+// 	defer file.Close()
+// 	writer := csv.NewWriter(file)
+// 	defer writer.Flush()
+// 	writer.Write([]string{"Account", "PeerAccount", "TxCount"})
+// 	// 统计每个账户的组内总交易量
+// 	type accountStat struct {
+// 		Account      string
+// 		TotalTxCount int
+// 	}
+// 	var accountStats []accountStat
+// 	for account, peers := range ccm.epochAccountPairCount {
+// 		total := 0
+// 		for _, count := range peers {
+// 			total += count
+// 		}
+// 		accountStats = append(accountStats, accountStat{account, total})
+// 	}
+// 	// 按组内总交易量降序排序账户
+// 	sort.Slice(accountStats, func(i, j int) bool {
+// 		return accountStats[i].TotalTxCount > accountStats[j].TotalTxCount
+// 	})
+// 	// 先按账户组内总交易量降序输出，每组内部按交易量降序
+// 	for _, acc := range accountStats {
+// 		account := acc.Account
+// 		peers := ccm.epochAccountPairCount[account]
+// 		// 组内按交易量降序
+// 		type peerStat struct {
+// 			Peer  string
+// 			Count int
+// 		}
+// 		var peerList []peerStat
+// 		for peer, count := range peers {
+// 			peerList = append(peerList, peerStat{peer, count})
+// 		}
+// 		sort.Slice(peerList, func(i, j int) bool {
+// 			return peerList[i].Count > peerList[j].Count
+// 		})
+// 		for _, item := range peerList {
+// 			writer.Write([]string{
+// 				account,
+// 				item.Peer,
+// 				fmt.Sprintf("%d", item.Count),
+// 			})
+// 		}
+// 	}
+// 	ccm.sl.Slog.Printf("epoch %d 账户对统计已保存到 %s", epochId, filename)
+// }
 
 // 监督者处理节点动作消息，更新epoch内节点贡献值变化、贡献交易变化
 func (ccm *RLPACommitteeModule) HandleNodeAction(content []byte) {
@@ -311,6 +374,7 @@ func (ccm *RLPACommitteeModule) MsgSendingControl() {
 	needAccountAlloc := false
 	stopepoch := 0
 	rlpaCnt := 0
+	// ccm.epochAccountPairCount = make(map[string]map[string]int)
 	// flag := true
 
 	// NodeFlag := true

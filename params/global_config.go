@@ -39,10 +39,10 @@ var (
 	LogWrite_path      = ExpDataRootDir + "/log"       // Log output path
 	DatabaseWrite_path = ExpDataRootDir + "/database/" // database write path
 
-	SupervisorAddr = "127.0.0.1:18800"                         // Supervisor ip address
-	DatasetFile    = `./2000000to2999999_BlockTransaction.csv` // The raw BlockTransaction data path
-
-	ReconfigTimeGap = 50 // The time gap between epochs. This variable is only used in CLPA / CLPA_Broker now.
+	SupervisorAddr = "127.0.0.1:18800" // Supervisor ip address
+	// DatasetFile    = `./2000000to2999999_BlockTransaction.csv` // The raw BlockTransaction data path
+	DatasetFile     = `./3000000to3999999_BlockTransaction.csv` // The raw BlockTransaction data path
+	ReconfigTimeGap = 50                                        // The time gap between epochs. This variable is only used in CLPA / CLPA_Broker now.
 
 	NodeAllocFreq = 50 //节点分配频率,单位为秒
 
@@ -55,7 +55,7 @@ var (
 	NodeInitalDelay  = 10
 	RLPAFreqEpoch    = 4 //PLouvain算法执行频率,单位为epoch
 
-	IfNodeAlloc   = true                                //是否进行节点分配
+	IfNodeAlloc   = false                               //是否进行节点分配
 	RLPAFrequency = (RLPAFreqEpoch - 1) * NodeAllocFreq //有节点分配时这样计算，因为程序里加上NodeAllocFreq-10的延迟保证在epoch末尾
 	// IfNodeAlloc       = false
 	// PlouvainFrequency = PlouvainFreqEpoch * NodeAllocFreq //没有节点分配时这样计算，为PlouvainFreqEpoch个epoch一次

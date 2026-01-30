@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -149,7 +150,7 @@ func (ccm *CLPACommitteeMod_Broker) MsgSendingControl() {
 	reader := csv.NewReader(txfile)
 	txlist := make([]*core.Transaction, 0) // save the txs in this epoch (round)
 	clpaCnt := 0
-
+	epochTxs := make([]*core.Transaction, 0) // 新增：累积整个 epoch 的 txs
 	for {
 		data, err := reader.Read()
 		if err == io.EOF {
@@ -174,6 +175,9 @@ func (ccm *CLPACommitteeMod_Broker) MsgSendingControl() {
 
 			itx := ccm.dealTxByBroker(txlist)
 
+			// 将本 batch 的实际发送事务追加到 epoch 缓冲
+			epochTxs = append(epochTxs, itx...)
+
 			ccm.txSending(itx)
 
 			// reset the variants about tx sending
@@ -187,11 +191,35 @@ func (ccm *CLPACommitteeMod_Broker) MsgSendingControl() {
 			mmap, _ := ccm.clpaGraph.CLPA_Partition()
 
 			ccm.clpaMapSend(mmap)
+			// 统计并输出每个分片的交易数（负载），用 fetchModifiedMap
+			shardTxCount := make([]int, params.ShardNum)
+			for _, tx := range epochTxs {
+				sid := ccm.fetchModifiedMap(tx.Sender)
+				shardTxCount[sid]++
+			}
+			fmt.Println("epochTxs:", epochTxs)
+			for sid, txNum := range shardTxCount {
+				ccm.sl.Slog.Printf("Epoch %d: Shard %d has %d transactions\n", clpaCnt, sid, txNum)
+			}
+
+			// 计算分片负载的标准差
+			var sum, sum2 float64
+			for _, txNum := range shardTxCount {
+				sum += float64(txNum)
+				sum2 += float64(txNum) * float64(txNum)
+			}
+			mean := sum / float64(len(shardTxCount))
+			variance := sum2/float64(len(shardTxCount)) - mean*mean
+			stddev := math.Sqrt(variance)
+			ccm.sl.Slog.Printf("Epoch %d: Shard transaction stddev = %.2f\n", clpaCnt, stddev)
 			for key, val := range mmap {
 				ccm.modifiedMap[key] = val
 			}
 			ccm.clpaReset()
 			ccm.clpaLock.Unlock()
+
+			// 清空 epochTxs，为下一个 epoch 累积
+			epochTxs = make([]*core.Transaction, 0)
 
 			for atomic.LoadInt32(&ccm.curEpoch) != int32(clpaCnt) {
 				time.Sleep(time.Second)
@@ -214,11 +242,36 @@ func (ccm *CLPACommitteeMod_Broker) MsgSendingControl() {
 			mmap, _ := ccm.clpaGraph.CLPA_Partition()
 
 			ccm.clpaMapSend(mmap)
+			// 统计并输出每个分片的交易数（负载），用 fetchModifiedMap
+			shardTxCount := make([]int, params.ShardNum)
+			for _, tx := range epochTxs {
+				sid := ccm.fetchModifiedMap(tx.Sender)
+				shardTxCount[sid]++
+			}
+			fmt.Println("epochTxs:", epochTxs)
+			for sid, txNum := range shardTxCount {
+				ccm.sl.Slog.Printf("Epoch %d: Shard %d has %d transactions\n", clpaCnt, sid, txNum)
+			}
+
+			// 计算分片负载的标准差
+			var sum, sum2 float64
+			for _, txNum := range shardTxCount {
+				sum += float64(txNum)
+				sum2 += float64(txNum) * float64(txNum)
+			}
+			mean := sum / float64(len(shardTxCount))
+			variance := sum2/float64(len(shardTxCount)) - mean*mean
+			stddev := math.Sqrt(variance)
+			ccm.sl.Slog.Printf("Epoch %d: Shard transaction stddev = %.2f\n", clpaCnt, stddev)
+
 			for key, val := range mmap {
 				ccm.modifiedMap[key] = val
 			}
 			ccm.clpaReset()
 			ccm.clpaLock.Unlock()
+
+			// 清空 epochTxs，为下一个 epoch 累积
+			epochTxs = make([]*core.Transaction, 0)
 
 			for atomic.LoadInt32(&ccm.curEpoch) != int32(clpaCnt) {
 				time.Sleep(time.Second)

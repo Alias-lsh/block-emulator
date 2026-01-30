@@ -33,7 +33,7 @@ func (b *Broker) IsBroker(address string) bool {
 
 func (b *Broker) initBrokerAddr(num int) []string {
 	brokerAddress := make([]string, 0)
-	filePath := `./broker/broker`
+	filePath := `./broker/broker2`
 	readFile, err := os.Open(filePath)
 	if err != nil {
 		fmt.Println(err)

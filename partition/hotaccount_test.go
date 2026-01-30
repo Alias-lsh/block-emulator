@@ -235,10 +235,10 @@ func sortPairCounts(counts map[[2]string]int) []PairCount {
 func TestHotaccount(t *testing.T) {
 	// 配置参数
 	const (
-		outputPrefix = "results2"
+		outputPrefix = "results3"
 		fromCol      = 3 // 发送方地址列索引
 		toCol        = 4 // 接收方地址列索引
-		maxLines     = 300000
+		maxLines     = 3000000
 	)
 	inputFile := "../" + params.DatasetFile
 	// 处理CSV文件
